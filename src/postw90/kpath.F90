@@ -59,6 +59,7 @@ contains
     use w90_berry, only: berry_get_imf_klist, berry_get_imfgh_klist, &
       berry_get_shc_klist
     use w90_constants, only: bohr
+    use w90_wan_ham, only : wham_get_inv_mass_ten !ALVARO
 
     integer, dimension(0:num_nodes - 1) :: counts, displs
 
@@ -83,6 +84,8 @@ contains
                                      plot_kpoint(:, :), my_plot_kpoint(:, :), &
                                      shc(:), my_shc(:)
     character(len=3), allocatable  :: glabel(:)
+
+    real(kind=dp), dimension(num_wann,3,3) :: mu !ALVARO
 
     ! Everything is done on the root node (not worthwhile parallelizing)
     ! However, we still have to read and distribute the data if we
@@ -171,8 +174,22 @@ contains
 
     ! Loop over local junk of k-points on the path and evaluate the requested quantities
     !
+    open(unit=111,action="write",file="test.dat",status="unknown")!ALVARO
     do loop_kpt = 1, my_num_pts
       kpt(:) = my_plot_kpoint(:, loop_kpt)
+
+      !ALVARO
+      call wham_get_inv_mass_ten(kpt, mu)
+      do i=1,3
+        do j=1,3
+          do n=1,num_wann
+            !print*, "pppppppppppppppp"
+            write(unit=111,fmt=*) kpt, i, j, n, mu(n,i,j)
+            !print*, n, mu(n,i,j)
+          enddo
+          !stop
+        enddo
+      enddo
 
       if (plot_bands) then
         call pw90common_fourier_R_to_k(kpt, HH_R, HH, 0)
@@ -226,6 +243,7 @@ contains
         my_shc(loop_kpt) = shc_k_fermi(1)
       end if
     end do !loop_kpt
+    close(unit=111)!ALVARO
 
     ! Send results to root process
     if (plot_bands) then
