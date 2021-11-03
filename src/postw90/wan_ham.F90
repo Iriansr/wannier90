@@ -24,6 +24,7 @@ module w90_wan_ham
   public :: wham_get_D_h, wham_get_eig_deleig, wham_get_eig_deleig_TB_conv, wham_get_D_h_P_value
   public :: wham_get_occ_mat_list, wham_get_eig_UU_HH_JJlist
   public :: wham_get_eig_UU_HH_AA_sc, wham_get_eig_UU_HH_AA_sc_TB_conv
+  public :: wham_get_inv_mass_ten !ALVARO
 
 contains
 
@@ -631,6 +632,46 @@ contains
     enddo
 
   end subroutine wham_get_eig_UU_HH_JJlist
+
+  subroutine wham_get_inv_mass_ten(kpt, mu)!ALVARO
+    !========================================================!
+    !                                                        !
+    !Routine used to compute\hbar^2\mu_{n,a,b}(\bf{k}),      !
+    !defined in Eq.(24) YWVS07.                              !
+    !                                                        !
+    !========================================================!
+
+    use w90_parameters, only: num_wann
+    use w90_get_oper, only: HH_R, get_HH_R
+    use w90_postw90_common, only: pw90common_fourier_R_to_k_new_second_d
+    use w90_utility, only: utility_diagonalize
+
+    real(kind=dp), dimension(3), intent(in)      :: kpt
+    real(kind=dp), dimension(num_wann,3,3), intent(out) :: mu !mu(n,a,b)(kpt).
+
+    real(kind=dp)                                                         :: eig(num_wann)
+    complex(kind=dp), dimension(num_wann, num_wann)                       :: UU, WUU
+    complex(kind=dp), dimension(num_wann, num_wann)                       :: HH
+    complex(kind=dp), dimension(num_wann, num_wann, num_wann)             :: HH_da
+    complex(kind=dp), dimension(num_wann, num_wann, num_wann, num_wann)   :: HH_dadb
+
+    integer                       :: i, j
+
+    call get_HH_R
+
+    call pw90common_fourier_R_to_k_new_second_d(kpt, HH_R, OO=HH, &
+                                                OO_da=HH_da(:, :, :), &
+                                                OO_dadb=HH_dadb(:, :, :, :))
+    call utility_diagonalize(HH, num_wann, eig, UU)
+
+    do i=1, 3
+      do j=1, 3
+        WUU = UU !Done to avoid overwriting UU on subroutine call.
+        call wham_get_deleig_a_b(mu(:,i,j), eig, HH_da(:, :, i), HH_da(:, :, j), HH_dadb(:, :, i, j), WUU)
+      enddo
+    enddo
+
+  end subroutine wham_get_inv_mass_ten
 
   subroutine wham_get_eig_UU_HH_AA_sc_TB_conv(kpt, eig, UU, HH, HH_da, HH_dadb)
     !========================================================!
