@@ -55,7 +55,7 @@ module w90_utility
 contains
 
   !=============================================================!
-  subroutine utility_get_degen(eig,dim,degen_thr,deg)!ALVARO
+  subroutine utility_get_degen(eig,dim,degen_thr,deg)!ALVARO 
 
     !Auxiliary routine to get the degree of degeneracy for a given list.
     !The list is supposed to have it's elements stored in ascending order:
