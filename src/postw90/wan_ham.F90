@@ -381,6 +381,150 @@ contains
 
   end subroutine wham_get_deleig_a
 
+  subroutine wham_get_deleig_a_b(deleig_a_b, eig, delHH_a, delHH_b, delHH_a_b, UU)
+    !=========================================!ALVARO
+    !                                         !
+    !! Second band derivatives d^2E/dk_a dk_b !
+    !                                         !
+    !=========================================!
+
+    use w90_constants, only: dp, cmplx_0, cmplx_i
+    use w90_utility, only: utility_diagonalize, utility_rotate, utility_get_degen
+    use w90_parameters, only: num_wann, degen_thr
+
+    ! Arguments
+    !
+    real(kind=dp), intent(out) :: deleig_a_b(num_wann)
+    real(kind=dp), intent(in)  :: eig(num_wann)
+    complex(kind=dp), dimension(:, :), intent(in)  :: delHH_a, delHH_b, delHH_a_b
+    complex(kind=dp), dimension(:, :), intent(inout)  :: UU !WARNING: UU may be changed on routine call.
+
+    !Misc
+    !
+    complex(kind=dp), allocatable :: D_b(:,:), delHH_bar_a(:, :), delHH_bar_b(:, :), delHH_bar_a_b(:,:), mu_ten_a_b(:,:),&
+    & dummy_rot(:,:)
+    real(kind=dp), allocatable :: dummy_eig(:), eig_delHH_bar_a(:)
+    integer :: i, j
+    integer, allocatable :: g(:), g_delHH_bar_a(:)
+
+    allocate (D_b(num_wann, num_wann),delHH_bar_a(num_wann, num_wann), delHH_bar_b(num_wann, num_wann), &
+    & delHH_bar_a_b(num_wann, num_wann),mu_ten_a_b(num_wann, num_wann))
+
+    allocate (eig_delHH_bar_a(num_wann),g(num_wann),g_delHH_bar_a(num_wann))
+
+    allocate(dummy_rot(num_wann, num_wann))
+
+    !Get the eigenvalues of delHH_bar_a, Eq.(31) YWVS07.
+    delHH_bar_a = utility_rotate(delHH_a, UU, num_wann)
+    call utility_diagonalize(delHH_bar_a, num_wann,eig_delHH_bar_a ,dummy_rot)
+    deallocate(dummy_rot)
+
+    call utility_get_degen(eig,num_wann,degen_thr,g) !Get degenerate level indices and dimensions for energy eigenvalues.
+    call utility_get_degen(eig_delHH_bar_a,num_wann,degen_thr,g_delHH_bar_a) !Same for the eigenvalues of delHH_bar_a.
+
+    if (maxval(g).GT.1) then
+
+      !Degenerate band case.
+      !
+
+      do j=1, num_wann      !For each eigenvalue,
+        if (g(j).GT.1) then !check degeneracy
+          allocate(dummy_eig(g(j)))
+                            !and update the colums of the unitary rotation matrix
+                            !with those diagonalizing the degenerate subspace of delHH_bar_a.
+          call utility_diagonalize(delHH_bar_a(j:j+g(j)-1,j:j+g(j)-1), g(j),dummy_eig ,UU(j:j+g(j)-1,j:j+g(j)-1))
+          deallocate(dummy_eig)
+        endif
+      enddo
+
+      !Get updated gauge rotated quantities.
+      ! 
+      delHH_bar_a = utility_rotate(delHH_a, UU, num_wann)
+      delHH_bar_b = utility_rotate(delHH_b, UU, num_wann)
+      delHH_bar_a_b = utility_rotate(delHH_a_b, UU, num_wann)
+
+      !Define the anti-Hermitian matrix D_b as in Eq.(32) YWVS07.
+      !
+      do i=1, num_wann
+        do j=1, num_wann
+            if (abs(eig(i)-eig(j)) .LE. degen_thr) then 
+                D_b(i,j) = 0.0_dp
+            else
+                D_b(i,j) = delHH_bar_b(i,j)/(eig(j)-eig(i))
+            endif
+        enddo
+      enddo
+
+      !Compute Eq.(28) YWVS07. 
+      !
+      mu_ten_a_b = matmul(delHH_bar_a,D_b)
+      mu_ten_a_b = delHH_bar_a_b + mu_ten_a_b + transpose(conjg(mu_ten_a_b))
+
+      if (maxval(g_delHH_bar_a).GT.1) then
+
+        !Degenerate Hamiltonian matrix derivative case.
+        !The mass tensor mu_ten_a_b must be diagonalized in those subspaces.
+        !The eigenvalues are the needed results.
+
+        do j=1, num_wann      !For each eigenvalue,
+          if (g_delHH_bar_a(j).GT.1) then !check degeneracy
+            allocate(dummy_rot(g_delHH_bar_a(j),g_delHH_bar_a(j)))
+                              !and compute the eigenvalues of mu_ten_a_b in the 
+                              !degenerate subspace of delHH_bar_a. Then write 
+                              !them in the corresponding indices of deleig_a_b.
+            call utility_diagonalize(mu_ten_a_b(j:j+g_delHH_bar_a(j)-1,j:j+g_delHH_bar_a(j)-1),&
+            &g_delHH_bar_a(j),deleig_a_b(j:j+g_delHH_bar_a(j)-1) ,dummy_rot)
+            deallocate(dummy_rot)
+          else !Nondegenerate eigenvalue case, just diagonal elements.
+            deleig_a_b(j) = real(mu_ten_a_b(j,j),dp)
+          endif
+        enddo
+
+      else
+
+        !Nondegenerate Hamiltonian matrix derivative case.
+        !The diagonal elements of this matrix are needed in this case.
+        !
+        do i=1, num_wann
+          deleig_a_b(i) = real(mu_ten_a_b(i,i),dp)
+        enddo
+
+      endif
+
+    else
+
+      !Nondegenerate band case.
+      !Get gauge rotated quantities.
+      ! 
+      delHH_bar_a = utility_rotate(delHH_a, UU, num_wann)
+      delHH_bar_b = utility_rotate(delHH_b, UU, num_wann)
+      delHH_bar_a_b = utility_rotate(delHH_a_b, UU, num_wann)
+
+      !Define the anti-Hermitian matrix D_b as in Eq.(32) YWVS07.
+      !
+      do i=1, num_wann
+        do j=1, num_wann
+            if (abs(eig(i)-eig(j)) .LE. degen_thr) then 
+                D_b(i,j) = 0.0_dp
+            else
+                D_b(i,j) = delHH_bar_b(i,j)/(eig(j)-eig(i))
+            endif
+        enddo
+      enddo
+
+      !Compute Eq.(28) YWVS07. 
+      !The diagonal elements of this matrix are needed in this case.
+      !
+      mu_ten_a_b = matmul(delHH_bar_a,D_b)
+      mu_ten_a_b = delHH_bar_a_b + mu_ten_a_b + transpose(conjg(mu_ten_a_b))
+      do i=1, num_wann
+        deleig_a_b(i) = real(mu_ten_a_b(i,i),dp)
+      enddo
+    
+    endif
+
+  end subroutine wham_get_deleig_a_b
+
   subroutine wham_get_eig_deleig(kpt, eig, del_eig, HH, delHH, UU)
     !! Given a k point, this function returns eigenvalues E and
     !! derivatives of the eigenvalues dE/dk_a, using wham_get_deleig_a
