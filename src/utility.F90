@@ -57,12 +57,13 @@ contains
   !=============================================================!
   subroutine utility_get_degen(eig,dim,degen_thr,deg)!ALVARO 
 
-    !Auxiliary routine to get the degree of degeneracy for a given list.
-    !The list is supposed to have it's elements stored in ascending order:
-    !eig(i+1)>=eig(i). The degeneracy threshold is given by degen_thr.
-    !The results are set up such that if deg(i) = N,
-    !then eig(i) = eig(i+1) = ... = eig(i+N-1).
-    !If the value is nondegenerate or if i<j<i+N-1, then deg(j) = 0.
+  !Auxiliary routine to get the degree of degeneracy for a given list.
+  !The list is supposed to have it's elements stored in ascending order:
+  !eig(i+1)>=eig(i). The degeneracy threshold is given by degen_thr.
+  !The results are set up such that if deg(i) = N,
+  !then eig(i) = eig(i+1) = ... = eig(i+N-1).
+  !If i<j<i+N-1, then deg(j) = 0.
+  !If the value is nondegenerate, then deg(j) = 1.
 
     use w90_constants, only: dp
 
@@ -74,7 +75,7 @@ contains
     integer :: i,j
 
     deg = 0 
-  
+
     do i=1, dim
         do j=i, dim !In ascending order,
             if (abs(eig(j)-eig(i)) .LE. degen_thr) then
@@ -83,27 +84,20 @@ contains
             endif
         enddo
     enddo
-
-    !Set to 0 elements appearing only once.
-    do i=1, dim
-        if (deg(i).EQ.1) then
-            deg(i) = 0
-        endif
-    enddo
-
+  
     !In the case of eig(j+2)-eig(j+1)<degen_thr and eig(j+1)-eig(j)<degen_thr,
     !but eig(j+2)-eig(j)>degen_thr (closely packed levels),
     do i=dim-1,2,-1
-        if ((deg(i).GT.0).AND.(deg(i-1).NE.0)) then
-            deg(i-1) = deg(i) + 1   !increase the degeneracy value of the 
-                                    !degenerate level according to the degenerate levels following it.
-            deg(i+1) = 0            !Set the next levels to 0.
-        endif
+      if ((deg(i).GT.1).AND.(deg(i-1).GT.1)) then
+          deg(i-1) = deg(i) + 1   !increase the degeneracy value of the 
+                                  !degenerate level according to the degenerate levels following it.
+          deg(i+1) = 0            !Set the next levels to 0.
+      endif
     enddo
-    
+  
     do i=dim-1,1,-1
         !At this point, the second index of a closely packed level shall be corrected.
-        if ((deg(i) .GE. deg(i+1)).AND.(deg(i+1) .NE. 0)) then
+        if ((deg(i).NE.1).AND.(deg(i) .GE. deg(i+1)).AND.(deg(i+1) .GE. 1)) then
             deg(i+1) = 0
         endif
     enddo
