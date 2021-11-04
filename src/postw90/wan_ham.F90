@@ -391,7 +391,7 @@ contains
 
     use w90_constants, only: dp, cmplx_0, cmplx_i
     use w90_utility, only: utility_diagonalize, utility_rotate, utility_get_degen
-    use w90_parameters, only: num_wann, degen_thr
+    use w90_parameters, only: num_wann, degen_thr, sc_eta
 
     ! Arguments
     !
@@ -404,30 +404,34 @@ contains
     !
     complex(kind=dp), allocatable :: D_b(:,:), delHH_bar_a(:, :), delHH_bar_b(:, :), delHH_bar_a_b(:,:), mu_ten_a_b(:,:),&
     & dummy_rot(:,:)
-    real(kind=dp), allocatable :: dummy_eig(:), eig_delHH_bar_a(:)
+    real(kind=dp), allocatable :: dummy_eig(:), eig_delHH_bar_a(:), eig_delHH_bar_b(:)
     integer :: i, j
-    integer, allocatable :: g(:), g_delHH_bar_a(:)
+    integer, allocatable :: g(:), g_delHH_bar_a(:), g_delHH_bar_b(:)
 
     allocate (D_b(num_wann, num_wann),delHH_bar_a(num_wann, num_wann), delHH_bar_b(num_wann, num_wann), &
     & delHH_bar_a_b(num_wann, num_wann),mu_ten_a_b(num_wann, num_wann))
 
-    allocate (eig_delHH_bar_a(num_wann),g(num_wann),g_delHH_bar_a(num_wann))
+    allocate (eig_delHH_bar_a(num_wann),eig_delHH_bar_b(num_wann),g(num_wann),g_delHH_bar_a(num_wann) &
+    ,g_delHH_bar_b(num_wann))
 
     allocate(dummy_rot(num_wann, num_wann))
 
-    !Get the eigenvalues of delHH_bar_a, Eq.(31) YWVS07.
+    !Get the eigenvalues of delHH_bar_a and delHH_bar_b, Eq.(31) YWVS07.
     delHH_bar_a = utility_rotate(delHH_a, UU, num_wann)
+    delHH_bar_b = utility_rotate(delHH_b, UU, num_wann)
     call utility_diagonalize(delHH_bar_a, num_wann,eig_delHH_bar_a ,dummy_rot)
+    call utility_diagonalize(delHH_bar_b, num_wann,eig_delHH_bar_b ,dummy_rot)
     deallocate(dummy_rot)
 
     call utility_get_degen(eig,num_wann,degen_thr,g) !Get degenerate level indices and dimensions for energy eigenvalues.
     call utility_get_degen(eig_delHH_bar_a,num_wann,degen_thr,g_delHH_bar_a) !Same for the eigenvalues of delHH_bar_a.
+    call utility_get_degen(eig_delHH_bar_b,num_wann,degen_thr,g_delHH_bar_b) !Same for the eigenvalues of delHH_bar_b.
 
     if (maxval(g).GT.1) then
 
-      !Degenerate band case.
+      !Degenerate band case. Untested yet, go to the else clause to see the tested part of the code.
       !
-
+      !!!!!!!!!!!!!!!!!!!!!DO FOR EVERY DEGENERATE SUBSPACE (as it is) OR DO FOR THE WHOLE MxM SPACE?
       do j=1, num_wann      !For each eigenvalue,
         if (g(j).GT.1) then !check degeneracy
           allocate(dummy_eig(g(j)))
@@ -461,12 +465,13 @@ contains
       mu_ten_a_b = matmul(delHH_bar_a,D_b)
       mu_ten_a_b = delHH_bar_a_b + mu_ten_a_b + transpose(conjg(mu_ten_a_b))
 
-      if (maxval(g_delHH_bar_a).GT.1) then
+      if ((maxval(g_delHH_bar_a).GT.1).OR.(maxval(g_delHH_bar_b).GT.1)) then
 
         !Degenerate Hamiltonian matrix derivative case.
         !The mass tensor mu_ten_a_b must be diagonalized in those subspaces.
         !The eigenvalues are the needed results.
 
+        !!!!!!!!!!!!!!!!!!!!!DO FOR EVERY DEGENERATE SUBSPACE (as it is) OR DO FOR THE WHOLE MxM SPACE?
         do j=1, num_wann      !For each eigenvalue,
           if (g_delHH_bar_a(j).GT.1) then !check degeneracy
             allocate(dummy_rot(g_delHH_bar_a(j),g_delHH_bar_a(j)))
@@ -492,7 +497,7 @@ contains
 
       endif
 
-    else
+    else !Tested case in first benchmark.
 
       !Nondegenerate band case.
       !Get gauge rotated quantities.
@@ -502,13 +507,16 @@ contains
       delHH_bar_a_b = utility_rotate(delHH_a_b, UU, num_wann)
 
       !Define the anti-Hermitian matrix D_b as in Eq.(32) YWVS07.
+      !Here I have included a regularisation given by sc_eta.
+      !It explains the (small) diference between the previous version of this routine and 
+      !the deprecated routine wham_get_eig_deleig_massterm.
       !
       do i=1, num_wann
         do j=1, num_wann
-            if (abs(eig(i)-eig(j)) .LE. degen_thr) then 
+            if (i==j) then
                 D_b(i,j) = 0.0_dp
             else
-                D_b(i,j) = delHH_bar_b(i,j)/(eig(j)-eig(i))
+                D_b(i,j) = delHH_bar_b(i,j)*((eig(j)-eig(i))/((eig(j)-eig(i))**2 + sc_eta**2))
             endif
         enddo
       enddo
