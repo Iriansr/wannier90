@@ -498,13 +498,6 @@ contains
 
     else 
 
-      !Nondegenerate band case.
-      !Get gauge rotated quantities.
-      ! 
-      delHH_bar_a = utility_rotate(delHH_a, UU, num_wann)
-      delHH_bar_b = utility_rotate(delHH_b, UU, num_wann)
-      delHH_bar_a_b = utility_rotate(delHH_a_b, UU, num_wann)
-
       !Define the anti-Hermitian matrix D_b as in Eq.(32) YWVS07.
       !
       do i=1, num_wann
