@@ -397,8 +397,7 @@ contains
     !
     real(kind=dp), intent(out) :: deleig_a_b(num_wann)
     real(kind=dp), intent(in)  :: eig(num_wann)
-    complex(kind=dp), dimension(:, :), intent(in)  :: delHH_a, delHH_b, delHH_a_b
-    complex(kind=dp), dimension(:, :), intent(inout)  :: UU !WARNING: UU may be changed on routine call.
+    complex(kind=dp), dimension(:, :), intent(in)  :: delHH_a, delHH_b, delHH_a_b, UU
 
     !Misc
     !
@@ -416,9 +415,11 @@ contains
 
     allocate(dummy_rot(num_wann, num_wann))
 
-    !Get the eigenvalues of delHH_bar_a and delHH_bar_b, Eq.(31) YWVS07.
+    !Get bar-ed quantities.
     delHH_bar_a = utility_rotate(delHH_a, UU, num_wann)
     delHH_bar_b = utility_rotate(delHH_b, UU, num_wann)
+    delHH_bar_a_b = utility_rotate(delHH_a_b, UU, num_wann)
+    !Get the eigenvalues of delHH_bar_a and delHH_bar_b, Eq.(31) YWVS07.
     call utility_diagonalize(delHH_bar_a, num_wann,eig_delHH_bar_a ,dummy_rot)
     call utility_diagonalize(delHH_bar_b, num_wann,eig_delHH_bar_b ,dummy_rot)
     deallocate(dummy_rot)
@@ -429,35 +430,32 @@ contains
 
     if (maxval(g).GT.1) then
 
-      !Degenerate band case. Untested yet, go to the else clause to see the tested part of the code.
+      !Degenerate band case. 
       !
-      !!!!!!!!!!!!!!!!!!!!!DO FOR EVERY DEGENERATE SUBSPACE (as it is) OR DO FOR THE WHOLE MxM SPACE?
-      do j=1, num_wann      !For each eigenvalue,
-        if (g(j).GT.1) then !check degeneracy
-          allocate(dummy_eig(g(j)))
-                            !and update the colums of the unitary rotation matrix
-                            !with those diagonalizing the degenerate subspace of delHH_bar_a.
-          call utility_diagonalize(delHH_bar_a(j:j+g(j)-1,j:j+g(j)-1), g(j),dummy_eig ,UU(j:j+g(j)-1,j:j+g(j)-1))
-          deallocate(dummy_eig)
-        endif
-      enddo
-
-      !Get updated gauge rotated quantities.
-      ! 
-      delHH_bar_a = utility_rotate(delHH_a, UU, num_wann)
-      delHH_bar_b = utility_rotate(delHH_b, UU, num_wann)
-      delHH_bar_a_b = utility_rotate(delHH_a_b, UU, num_wann)
 
       !Define the anti-Hermitian matrix D_b as in Eq.(32) YWVS07.
+      !Here I have included a regularisation given by sc_eta.
+      !It explains the (small) diference between the previous version of this routine and 
+      !the deprecated routine wham_get_eig_deleig_massterm.
       !
       do i=1, num_wann
         do j=1, num_wann
             if (abs(eig(i)-eig(j)) .LE. degen_thr) then 
                 D_b(i,j) = 0.0_dp
             else
-                D_b(i,j) = delHH_bar_b(i,j)/(eig(j)-eig(i))
+                D_b(i,j) = delHH_bar_b(i,j)*((eig(j)-eig(i))/((eig(j)-eig(i))**2 + sc_eta**2))
             endif
         enddo
+      enddo
+
+      do j=1, num_wann      !For each eigenvalue,
+        if (g(j).GT.1) then !check degeneracy
+          allocate(dummy_eig(g(j)))
+                            !and update the colums of D_b with
+                            !those diagonalizing the degenerate subspace of delHH_bar_b.
+          call utility_diagonalize(delHH_bar_b(j:j+g(j)-1,j:j+g(j)-1), g(j),dummy_eig ,D_b(j:j+g(j)-1,j:j+g(j)-1))
+          deallocate(dummy_eig)
+        endif
       enddo
 
       !Compute Eq.(28) YWVS07. 
@@ -471,16 +469,17 @@ contains
         !The mass tensor mu_ten_a_b must be diagonalized in those subspaces.
         !The eigenvalues are the needed results.
 
-        !!!!!!!!!!!!!!!!!!!!!DO FOR EVERY DEGENERATE SUBSPACE (as it is) OR DO FOR THE WHOLE MxM SPACE?
         do j=1, num_wann      !For each eigenvalue,
-          if (g_delHH_bar_a(j).GT.1) then !check degeneracy
-            allocate(dummy_rot(g_delHH_bar_a(j),g_delHH_bar_a(j)))
+          if (g(j).GT.1) then !check degeneracy
+            allocate(dummy_rot(g(j),g(j)))
                               !and compute the eigenvalues of mu_ten_a_b in the 
-                              !degenerate subspace of delHH_bar_a. Then write 
+                              !degenerate band subspace. Then write 
                               !them in the corresponding indices of deleig_a_b.
-            call utility_diagonalize(mu_ten_a_b(j:j+g_delHH_bar_a(j)-1,j:j+g_delHH_bar_a(j)-1),&
-            &g_delHH_bar_a(j),deleig_a_b(j:j+g_delHH_bar_a(j)-1) ,dummy_rot)
+            call utility_diagonalize(mu_ten_a_b(j:j+g(j)-1,j:j+g(j)-1),&
+            &g(j),deleig_a_b(j:j+g(j)-1) ,dummy_rot)
             deallocate(dummy_rot)
+          elseif (g(j).EQ.0) then !Cycle for the other values on the degenerate subspace.
+            cycle
           else !Nondegenerate eigenvalue case, just diagonal elements.
             deleig_a_b(j) = real(mu_ten_a_b(j,j),dp)
           endif
@@ -497,7 +496,7 @@ contains
 
       endif
 
-    else !Tested case in first benchmark.
+    else 
 
       !Nondegenerate band case.
       !Get gauge rotated quantities.
@@ -507,9 +506,6 @@ contains
       delHH_bar_a_b = utility_rotate(delHH_a_b, UU, num_wann)
 
       !Define the anti-Hermitian matrix D_b as in Eq.(32) YWVS07.
-      !Here I have included a regularisation given by sc_eta.
-      !It explains the (small) diference between the previous version of this routine and 
-      !the deprecated routine wham_get_eig_deleig_massterm.
       !
       do i=1, num_wann
         do j=1, num_wann
@@ -658,7 +654,7 @@ contains
     real(kind=dp), dimension(num_wann,3,3), intent(out) :: mu !mu(n,a,b)(kpt).
 
     real(kind=dp)                                                         :: eig(num_wann)
-    complex(kind=dp), dimension(num_wann, num_wann)                       :: UU, WUU
+    complex(kind=dp), dimension(num_wann, num_wann)                       :: UU
     complex(kind=dp), dimension(num_wann, num_wann)                       :: HH
     complex(kind=dp), dimension(num_wann, num_wann, num_wann)             :: HH_da
     complex(kind=dp), dimension(num_wann, num_wann, num_wann, num_wann)   :: HH_dadb
@@ -674,8 +670,7 @@ contains
 
     do i=1, 3
       do j=1, 3
-        WUU = UU !Done to avoid overwriting UU on subroutine call.
-        call wham_get_deleig_a_b(mu(:,i,j), eig, HH_da(:, :, i), HH_da(:, :, j), HH_dadb(:, :, i, j), WUU)
+        call wham_get_deleig_a_b(mu(:,i,j), eig, HH_da(:, :, i), HH_da(:, :, j), HH_dadb(:, :, i, j), UU)
       enddo
     enddo
 
