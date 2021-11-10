@@ -1178,7 +1178,7 @@ contains
             j = alpha_S(jk)
             k = beta_S(jk)
             do n = 1, 3
-                file_name = trim(seedname)//'-sc_'// &
+                file_name = trim(seedname)//'-jc_'// &
                           achar(119 + i)//achar(119 + j)//achar(119 + k)//achar(119 + n)//'.dat'
               file_name = trim(file_name)
               file_unit = io_file_unit()
