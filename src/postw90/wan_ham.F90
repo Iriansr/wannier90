@@ -24,7 +24,7 @@ module w90_wan_ham
   public :: wham_get_D_h, wham_get_eig_deleig, wham_get_eig_deleig_TB_conv, wham_get_D_h_P_value
   public :: wham_get_occ_mat_list, wham_get_eig_UU_HH_JJlist
   public :: wham_get_eig_UU_HH_AA_sc, wham_get_eig_UU_HH_AA_sc_TB_conv
-  public :: wham_get_inv_mass_ten !ALVARO
+  public :: wham_get_deleig_a_b, wham_get_inv_mass_ten !ALVARO
 
 contains
 
