@@ -124,8 +124,8 @@ contains
     real(kind=dp), allocatable :: sc_k_list(:, :, :)
     real(kind=dp), allocatable :: sc_list(:, :, :)
     ! jerk current !ALVARO
-    real(kind=dp), allocatable :: jc_k_list(:, :, :, :)
-    real(kind=dp), allocatable :: jc_list(:, :, :, :)
+    real(kind=dp), allocatable :: jc_k_list(:, :, :)
+    real(kind=dp), allocatable :: jc_list(:, :, :)
     ! kdotp
     complex(kind=dp), allocatable :: kdotp(:, :, :, :, :)
     ! Complex optical conductivity, dividided into Hermitean and
@@ -157,7 +157,7 @@ contains
 
     real(kind=dp)     :: kweight, kweight_adpt, kpt(3), kpt_ad(3), &
                          db1, db2, db3, fac, freq, rdum, vdum(3)
-    integer           :: n, i, j, k, jk, ikpt, if, ispn, ierr, loop_x, loop_y, loop_z, &
+    integer           :: n, i, j, k, l, il, jk, ikpt, if, ispn, ierr, loop_x, loop_y, loop_z, &!ALVARO
                          loop_xyz, loop_adpt, adpt_counter_list(nfermi), ifreq, &
                          file_unit
     character(len=120) :: file_name
@@ -256,8 +256,8 @@ contains
     if (eval_jc) then!ALVARO
       call get_HH_R
       call get_AA_R
-      allocate (jc_k_list(3, 6, 3, kubo_nfreq))
-      allocate (jc_list(3, 6, 3, kubo_nfreq))
+      allocate (jc_k_list(6, 6, kubo_nfreq))
+      allocate (jc_list(6, 6, kubo_nfreq))
       jc_k_list = 0.0_dp
       jc_list = 0.0_dp
     endif
@@ -707,7 +707,7 @@ contains
     end if
 
     if (eval_jc) then!ALVARO
-      call comms_reduce(jc_list(1, 1, 1, 1), 3*6*3*kubo_nfreq, 'SUM')
+      call comms_reduce(jc_list(1, 1, 1), 6*6*kubo_nfreq, 'SUM')
     end if
 
     if (eval_shc) then
@@ -1173,23 +1173,23 @@ contains
         write (stdout, '(1x,a)') &
           '----------------------------------------------------------'
 
-        do i = 1, 3
+        do il = 1, 6
+          i = alpha_S(il)
+          l = beta_S(il)
           do jk = 1, 6
             j = alpha_S(jk)
             k = beta_S(jk)
-            do n = 1, 3
-                file_name = trim(seedname)//'-jc_'// &
-                          achar(119 + i)//achar(119 + j)//achar(119 + k)//achar(119 + n)//'.dat'
-              file_name = trim(file_name)
-              file_unit = io_file_unit()
-              write (stdout, '(/,3x,a)') '* '//file_name
-              open (file_unit, FILE=file_name, STATUS='UNKNOWN', FORM='FORMATTED')
-              do ifreq = 1, kubo_nfreq
-                write (file_unit, '(2E18.8E3)') real(kubo_freq_list(ifreq), dp), &
-                  jc_list(i, jk, n, ifreq)
-              enddo
-              close (file_unit)
-          enddo
+            file_name = trim(seedname)//'-jc_'// &
+                      achar(119 + i)//achar(119 + j)//achar(119 + k)//achar(119 + n)//'.dat'
+            file_name = trim(file_name)
+            file_unit = io_file_unit()
+            write (stdout, '(/,3x,a)') '* '//file_name
+            open (file_unit, FILE=file_name, STATUS='UNKNOWN', FORM='FORMATTED')
+            do ifreq = 1, kubo_nfreq
+              write (file_unit, '(2E18.8E3)') real(kubo_freq_list(ifreq), dp), &
+              jc_list(il, jk, ifreq)
+            enddo
+            close (file_unit)
           enddo
         enddo
 
@@ -1949,7 +1949,7 @@ contains
     ! Arguments
     !
     real(kind=dp), intent(in)                        :: kpt(3)
-    real(kind=dp), intent(out), dimension(:, :, :, :)     :: jc_k_list
+    real(kind=dp), intent(out), dimension(:, :, :)     :: jc_k_list
 
     complex(kind=dp), allocatable :: UU(:, :)
     complex(kind=dp), allocatable :: AA(:, :, :)
@@ -1961,7 +1961,7 @@ contains
     real(kind=dp), allocatable    :: occ(:)
     real(kind=dp), allocatable    :: mu(:,:,:)
 
-    integer :: a, b, bc, c, d, i, n, m, iend, istart
+    integer :: a, ad, b, bc, c, d, i, n, m, iend, istart
     real(kind=dp) :: wmin, wmax, wstep, occ_fac, omega(kubo_nfreq), delta(kubo_nfreq), &
     eta_smr, Delta_k, vdum(3), joint_level_spacing
 
@@ -2012,64 +2012,66 @@ contains
     enddo
 
     !Loop on every spatial index.
-    do a = 1, 3
+    do ad = 1, 6!Exploit the a <-> d symmetry of the jerk tensor.
+
+      a = alpha_S(ad)
+      d = beta_S(ad)
+
       do bc = 1, 6!Exploit the b <-> c symmetry of the jerk tensor.
+
         b = alpha_S(bc)
         c = beta_S(bc)
-        do d = 1, 3
+
+        !Loop on bands.
+        do n = 1, num_wann
+          do m = 1, num_wann
+
+            !Cycle diagonal matrix elements and bands above the maximum.
+            if (n == m) cycle
+            if (eig(m) > kubo_eigval_max .or. eig(n) > kubo_eigval_max) cycle
+            !Setup T=0 occupation factors.
+            occ_fac = (occ(n) - occ(m))
+            if (abs(occ_fac) < 1e-10) cycle
+
+            !Set delta function smearing.
+            if (kubo_adpt_smr) then
+              vdum(:) = eig_da(m, :) - eig_da(n, :)
+              joint_level_spacing = sqrt(dot_product(vdum(:), vdum(:)))*Delta_k
+              eta_smr = min(joint_level_spacing*kubo_adpt_smr_fac, &
+                        kubo_adpt_smr_max)
+            else
+              eta_smr = kubo_smr_fixed_en_width
+            endif
+
+            !Restrict to energy window spanning [-sc_w_thr*eta_smr,+sc_w_thr*eta_smr],
+            !outside this range, the delta function is virtually zero.
+            if (((eig(n) - eig(m) + sc_w_thr*eta_smr < wmin) .or. (eig(n) - eig(m) - sc_w_thr*eta_smr > wmax)) .and. &
+            ((eig(m) - eig(n) + sc_w_thr*eta_smr < wmin) .or. (eig(m) - eig(n) - sc_w_thr*eta_smr > wmax))) cycle
+
+            !Compute delta(E_nm-w),
+            !choose energy window spanning [-sc_w_thr*eta_smr,+sc_w_thr*eta_smr].
+            istart = max(int((eig(n) - eig(m) - sc_w_thr*eta_smr - wmin)/wstep + 1), 1)
+            iend = min(int((eig(n) - eig(m) + sc_w_thr*eta_smr - wmin)/wstep + 1), kubo_nfreq)
+            !Multiply matrix elements with delta function for the relevant frequencies.
+            if (istart <= iend) then
+              delta = 0.0                  
+              delta(istart:iend) = &
+                utility_w0gauss_vec((eig(m) - eig(n) + omega(istart:iend))/eta_smr, kubo_smr_index)/eta_smr
+            endif
+
+            do i=1, kubo_nfreq
+
+              !Compute the integrand of Eq. (5) of 10.1103/PhysRevLett.121.176604.
+              jc_k_list(ad,bc,i) = jc_k_list(ad,bc,i) + (mu(n,a,d)-mu(m,a,d))*AA(n,m,b)*AA(m,n,c)*occ_fac*delta(i)
+
+            enddo
+
+          enddo!m
+        enddo!n
 
 
-          !Loop on bands.
-          do n = 1, num_wann
-            do m = 1, num_wann
-
-              !Cycle diagonal matrix elements and bands above the maximum.
-              if (n == m) cycle
-              if (eig(m) > kubo_eigval_max .or. eig(n) > kubo_eigval_max) cycle
-              !Setup T=0 occupation factors.
-              occ_fac = (occ(n) - occ(m))
-              if (abs(occ_fac) < 1e-10) cycle
-
-              !Set delta function smearing
-              if (kubo_adpt_smr) then
-                vdum(:) = eig_da(m, :) - eig_da(n, :)
-                joint_level_spacing = sqrt(dot_product(vdum(:), vdum(:)))*Delta_k
-                eta_smr = min(joint_level_spacing*kubo_adpt_smr_fac, &
-                          kubo_adpt_smr_max)
-              else
-                eta_smr = kubo_smr_fixed_en_width
-              endif
-
-              !Restrict to energy window spanning [-sc_w_thr*eta_smr,+sc_w_thr*eta_smr]
-              !outside this range, the delta function is virtually zero.
-              if (((eig(n) - eig(m) + sc_w_thr*eta_smr < wmin) .or. (eig(n) - eig(m) - sc_w_thr*eta_smr > wmax)) .and. &
-              ((eig(m) - eig(n) + sc_w_thr*eta_smr < wmin) .or. (eig(m) - eig(n) - sc_w_thr*eta_smr > wmax))) cycle
-
-              !Compute delta(E_nm-w)
-              !choose energy window spanning [-sc_w_thr*eta_smr,+sc_w_thr*eta_smr].
-              istart = max(int((eig(n) - eig(m) - sc_w_thr*eta_smr - wmin)/wstep + 1), 1)
-              iend = min(int((eig(n) - eig(m) + sc_w_thr*eta_smr - wmin)/wstep + 1), kubo_nfreq)
-              !Multiply matrix elements with delta function for the relevant frequencies.
-              if (istart <= iend) then
-                delta = 0.0                  
-                delta(istart:iend) = &
-                  utility_w0gauss_vec((eig(m) - eig(n) + omega(istart:iend))/eta_smr, kubo_smr_index)/eta_smr
-              endif
-
-              do i=1, kubo_nfreq
-
-                !Compute the integrand of Eq. (5) of 10.1103/PhysRevLett.121.176604.
-                jc_k_list(a,bc,d,i) = jc_k_list(a,bc,d,i) + (mu(n,a,d)-mu(m,a,d))*AA(n,m,b)*AA(m,n,c)*occ_fac*delta(i)
-
-              enddo
-
-            enddo!m
-          enddo!n
-
-
-        enddo!d
       enddo!bc
-    enddo!a
+    enddo!ad
 
   end subroutine berry_get_jc_klist
 
