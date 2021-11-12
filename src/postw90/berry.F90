@@ -1180,7 +1180,7 @@ contains
             j = alpha_S(jk)
             k = beta_S(jk)
             file_name = trim(seedname)//'-jc_'// &
-                      achar(119 + i)//achar(119 + j)//achar(119 + k)//achar(119 + n)//'.dat'
+                      achar(119 + i)//achar(119 + j)//achar(119 + k)//achar(119 + l)//'.dat'
             file_name = trim(file_name)
             file_unit = io_file_unit()
             write (stdout, '(/,3x,a)') '* '//file_name
