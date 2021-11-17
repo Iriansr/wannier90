@@ -124,8 +124,8 @@ contains
     real(kind=dp), allocatable :: sc_k_list(:, :, :)
     real(kind=dp), allocatable :: sc_list(:, :, :)
     ! jerk current !ALVARO
-    real(kind=dp), allocatable :: jc_k_list(:, :, :)
-    real(kind=dp), allocatable :: jc_list(:, :, :)
+    complex(kind=dp), allocatable :: jc_k_list(:, :, :)
+    complex(kind=dp), allocatable :: jc_list(:, :, :)
     ! kdotp
     complex(kind=dp), allocatable :: kdotp(:, :, :, :, :)
     ! Complex optical conductivity, dividided into Hermitean and
@@ -1187,7 +1187,7 @@ contains
             open (file_unit, FILE=file_name, STATUS='UNKNOWN', FORM='FORMATTED')
             do ifreq = 1, kubo_nfreq
               write (file_unit, '(2E18.8E3)') real(kubo_freq_list(ifreq), dp), &
-              jc_list(il, jk, ifreq)
+              real(jc_list(il, jk, ifreq),dp), aimag(jc_list(il, jk, ifreq))
             enddo
             close (file_unit)
           enddo
@@ -1949,13 +1949,14 @@ contains
     ! Arguments
     !
     real(kind=dp), intent(in)                        :: kpt(3)
-    real(kind=dp), intent(out), dimension(:, :, :)     :: jc_k_list
+    complex(kind=dp), intent(out), dimension(:, :, :)     :: jc_k_list
 
     complex(kind=dp), allocatable :: UU(:, :)
-    complex(kind=dp), allocatable :: AA(:, :, :)
+    complex(kind=dp), allocatable :: AA(:, :, :), AA_bar(:,:,:), r_pos(:,:,:)
     complex(kind=dp), allocatable :: HH_da(:, :, :)
     complex(kind=dp), allocatable :: HH_dadb(:, :, :, :)
     complex(kind=dp), allocatable :: HH(:, :)
+    complex(kind=dp), allocatable :: D_h(:,:,:)
     real(kind=dp), allocatable    :: eig(:)
     real(kind=dp), allocatable    :: eig_da(:, :)
     real(kind=dp), allocatable    :: occ(:)
@@ -1967,24 +1968,33 @@ contains
 
     allocate (UU(num_wann, num_wann))
     allocate (AA(num_wann, num_wann, 3))
+    allocate (AA_bar(num_wann, num_wann, 3))
+    allocate (r_pos(num_wann, num_wann, 3))
     allocate (HH_da(num_wann, num_wann, 3))
     allocate (HH_dadb(num_wann, num_wann, 3, 3))
     allocate (HH(num_wann, num_wann))
+    allocate (D_h(num_wann, num_wann, 3))
     allocate (eig(num_wann))
     allocate (eig_da(num_wann, 3))
     allocate (occ(num_wann))
     allocate (mu(num_wann,3,3))
 
-    !Get Hamiltonian matrix, bands, its derivatives and UU.
+    !Get Hamiltonian matrix, bands, its derivatives, D_h and UU.
 
     call pw90common_fourier_R_to_k_new_second_d(kpt, HH_R, OO=HH, &
                                                 OO_da=HH_da(:, :, :), &
                                                 OO_dadb=HH_dadb(:, :, :, :))
     call wham_get_eig_deleig(kpt, eig, eig_da, HH, HH_da, UU)
     call utility_diagonalize(HH, num_wann, eig, UU)
+    call wham_get_D_h_P_value(HH_da, UU, eig, D_h)
 
     !Get Berry connection AA.
     call pw90common_fourier_R_to_k_vec_dadb(kpt, AA_R, OO_da=AA)
+    !Obtain the position operator matrix elements in the Hamiltonian basis. See Eq. (25) WYSV06.
+    do i = 1, 3
+      AA_bar(:, :, i) = utility_rotate(AA(:, :, i), UU, num_wann)
+      r_pos(:,:,i) = AA_bar(:,:,i) + cmplx_i*D_h(:,:,i)
+    enddo
 
     !Get electronic occupations
     call pw90common_get_occ(eig, occ, fermi_energy_list(1))
@@ -2002,13 +2012,15 @@ contains
     jc_k_list = 0.0_dp
 
     !Loop on a, d spatial indices.
-    do a = 1, 3
-      do d = 1, 3
+    do ad = 1, 6!Exploit the a <-> d symmetry of the second band derivative.
 
-        !Get 2nd band derivative.
-        call wham_get_deleig_a_b(mu(:,a,d), eig, HH_da(:, :, a), HH_da(:, :, d), HH_dadb(:, :, a, d), UU)
+      a = alpha_S(ad)
+      d = beta_S(ad)
+
+      !Get 2nd band derivative.
+      call wham_get_deleig_a_b(mu(:,a,d), eig, HH_da(:, :, a), HH_da(:, :, d), HH_dadb(:, :, a, d), UU)
+      mu(:,d,a) = mu(:,a,d)
       
-      enddo
     enddo
 
     !Loop on every spatial index.
@@ -2062,7 +2074,7 @@ contains
             do i=1, kubo_nfreq
 
               !Compute the integrand of Eq. (5) of 10.1103/PhysRevLett.121.176604.
-              jc_k_list(ad,bc,i) = jc_k_list(ad,bc,i) + (mu(n,a,d)-mu(m,a,d))*AA(n,m,b)*AA(m,n,c)*occ_fac*delta(i)
+              jc_k_list(ad,bc,i) = jc_k_list(ad,bc,i) + (mu(n,a,d)-mu(m,a,d))*r_pos(n,m,b)*r_pos(m,n,c)*occ_fac*delta(i)
 
             enddo
 
@@ -2072,6 +2084,7 @@ contains
 
       enddo!bc
     enddo!ad
+
 
   end subroutine berry_get_jc_klist
 
