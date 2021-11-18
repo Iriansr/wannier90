@@ -258,8 +258,8 @@ contains
       call get_AA_R
       allocate (jc_k_list(6, 6, kubo_nfreq))
       allocate (jc_list(6, 6, kubo_nfreq))
-      jc_k_list = 0.0_dp
-      jc_list = 0.0_dp
+      jc_k_list = cmplx_0
+      jc_list = cmplx_0
     endif
 
     if (eval_shc) then
@@ -1190,6 +1190,9 @@ contains
               real(jc_list(il, jk, ifreq),dp), aimag(jc_list(il, jk, ifreq))
             enddo
             close (file_unit)
+
+            stop
+          
           enddo
         enddo
 
@@ -2009,7 +2012,7 @@ contains
     wstep = omega(2) - omega(1)
 
     !Initialize jc_k_list.
-    jc_k_list = 0.0_dp
+    jc_k_list = cmplx_0
 
     !Loop on a, d spatial indices.
     do ad = 1, 6!Exploit the a <-> d symmetry of the second band derivative.
@@ -2065,8 +2068,8 @@ contains
             istart = max(int((eig(n) - eig(m) - sc_w_thr*eta_smr - wmin)/wstep + 1), 1)
             iend = min(int((eig(n) - eig(m) + sc_w_thr*eta_smr - wmin)/wstep + 1), kubo_nfreq)
             !Multiply matrix elements with delta function for the relevant frequencies.
-            if (istart <= iend) then
-              delta = 0.0                  
+            delta = 0.0 
+            if (istart <= iend) then                 
               delta(istart:iend) = &
                 utility_w0gauss_vec((eig(m) - eig(n) + omega(istart:iend))/eta_smr, kubo_smr_index)/eta_smr
             endif
