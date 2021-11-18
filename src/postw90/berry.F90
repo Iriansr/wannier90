@@ -1190,9 +1190,6 @@ contains
               real(jc_list(il, jk, ifreq),dp), aimag(jc_list(il, jk, ifreq))
             enddo
             close (file_unit)
-
-            stop
-          
           enddo
         enddo
 
