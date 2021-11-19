@@ -26,6 +26,9 @@ module w90_wan_ham
   public :: wham_get_eig_UU_HH_AA_sc, wham_get_eig_UU_HH_AA_sc_TB_conv
   public :: wham_get_deleig_a_b, wham_get_inv_mass_ten !ALVARO
 
+  integer, dimension(6), parameter :: alpha_S = (/1, 2, 3, 1, 1, 2/)!ALVARO
+  integer, dimension(6), parameter ::  beta_S = (/1, 2, 3, 2, 3, 3/)
+
 contains
 
   subroutine wham_get_D_h_a(delHH_a, UU, eig, ef, D_h_a)
@@ -652,7 +655,7 @@ contains
     complex(kind=dp), dimension(num_wann, num_wann, num_wann)             :: HH_da
     complex(kind=dp), dimension(num_wann, num_wann, num_wann, num_wann)   :: HH_dadb
 
-    integer                       :: i, j
+    integer                       :: i, j, ij
 
     call get_HH_R
 
@@ -661,10 +664,11 @@ contains
                                                 OO_dadb=HH_dadb(:, :, :, :))
     call utility_diagonalize(HH, num_wann, eig, UU)
 
-    do i=1, 3
-      do j=1, 3
-        call wham_get_deleig_a_b(mu(:,i,j), eig, HH_da(:, :, i), HH_da(:, :, j), HH_dadb(:, :, i, j), UU)
-      enddo
+    do ij=1, 6
+      i = alpha_S(ij)
+      j = beta_S(ij)
+      call wham_get_deleig_a_b(mu(:,i,j), eig, HH_da(:, :, i), HH_da(:, :, j), HH_dadb(:, :, i, j), UU)
+      mu(:,j,i) = mu(:,i,j)
     enddo
 
   end subroutine wham_get_inv_mass_ten

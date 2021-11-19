@@ -2069,14 +2069,14 @@ contains
             if (istart <= iend) then                 
               delta(istart:iend) = &
                 utility_w0gauss_vec((eig(m) - eig(n) + omega(istart:iend))/eta_smr, kubo_smr_index)/eta_smr
+
+              do i=1, kubo_nfreq
+
+                !Compute the integrand of Eq. (4) of 10.1103/PhysRevB.102.195410.
+                jc_k_list(ad,bc,i) = jc_k_list(ad,bc,i) + (mu(n,a,d)-mu(m,a,d))*r_pos(n,m,b)*r_pos(m,n,c)*occ_fac*delta(i)
+              enddo
+
             endif
-
-            do i=1, kubo_nfreq
-
-              !Compute the integrand of Eq. (5) of 10.1103/PhysRevLett.121.176604.
-              jc_k_list(ad,bc,i) = jc_k_list(ad,bc,i) + (mu(n,a,d)-mu(m,a,d))*r_pos(n,m,b)*r_pos(m,n,c)*occ_fac*delta(i)
-
-            enddo
 
           enddo!m
         enddo!n
