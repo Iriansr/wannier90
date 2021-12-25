@@ -423,13 +423,13 @@ contains
     delHH_bar_b = utility_rotate(delHH_b, UU, num_wann)
     delHH_bar_a_b = utility_rotate(delHH_a_b, UU, num_wann)
     !Get the eigenvalues of delHH_bar_a and delHH_bar_b, Eq.(31) YWVS07.
-    call utility_diagonalize(delHH_bar_a, num_wann,eig_delHH_bar_a ,dummy_rot)
-    call utility_diagonalize(delHH_bar_b, num_wann,eig_delHH_bar_b ,dummy_rot)
+    !call utility_diagonalize(delHH_bar_a, num_wann,eig_delHH_bar_a ,dummy_rot)
+    !call utility_diagonalize(delHH_bar_b, num_wann,eig_delHH_bar_b ,dummy_rot)
     deallocate(dummy_rot)
 
     call utility_get_degen(eig,num_wann,degen_thr,g) !Get degenerate level indices and dimensions for energy eigenvalues.
-    call utility_get_degen(eig_delHH_bar_a,num_wann,degen_thr,g_delHH_bar_a) !Same for the eigenvalues of delHH_bar_a.
-    call utility_get_degen(eig_delHH_bar_b,num_wann,degen_thr,g_delHH_bar_b) !Same for the eigenvalues of delHH_bar_b.
+    !call utility_get_degen(eig_delHH_bar_a,num_wann,degen_thr,g_delHH_bar_a) !Same for the eigenvalues of delHH_bar_a.
+    !call utility_get_degen(eig_delHH_bar_b,num_wann,degen_thr,g_delHH_bar_b) !Same for the eigenvalues of delHH_bar_b.
 
     if (maxval(g).GT.1) then
 
@@ -451,22 +451,22 @@ contains
         enddo
       enddo
 
-      do j=1, num_wann      !For each eigenvalue,
-        if (g(j).GT.1) then !check degeneracy
-          allocate(dummy_eig(g(j)))
+      !do j=1, num_wann      !For each eigenvalue,
+      !  if (g(j).GT.1) then !check degeneracy
+      !    allocate(dummy_eig(g(j)))
                             !and update the colums of D_b with
                             !those diagonalizing the degenerate subspace of delHH_bar_b.
-          call utility_diagonalize(delHH_bar_b(j:j+g(j)-1,j:j+g(j)-1), g(j),dummy_eig ,D_b(j:j+g(j)-1,j:j+g(j)-1))
-          deallocate(dummy_eig)
-        endif
-      enddo
+      !    call utility_diagonalize(delHH_bar_b(j:j+g(j)-1,j:j+g(j)-1), g(j),dummy_eig ,D_b(j:j+g(j)-1,j:j+g(j)-1))
+      !    deallocate(dummy_eig)
+      !  endif
+      !enddo
 
       !Compute Eq.(28) YWVS07. 
       !
       mu_ten_a_b = matmul(delHH_bar_a,D_b)
       mu_ten_a_b = delHH_bar_a_b + mu_ten_a_b + transpose(conjg(mu_ten_a_b))
 
-      if ((maxval(g_delHH_bar_a).GT.1).OR.(maxval(g_delHH_bar_b).GT.1)) then
+      !if ((maxval(g_delHH_bar_a).GT.1).OR.(maxval(g_delHH_bar_b).GT.1)) then
 
         !Degenerate Hamiltonian matrix derivative case.
         !The mass tensor mu_ten_a_b must be diagonalized in those subspaces.
@@ -488,16 +488,16 @@ contains
           endif
         enddo
 
-      else
+      !else
 
         !Nondegenerate Hamiltonian matrix derivative case.
         !The diagonal elements of this matrix are needed in this case.
         !
-        do i=1, num_wann
-          deleig_a_b(i) = real(mu_ten_a_b(i,i),dp)
-        enddo
-
-      endif
+      !  do i=1, num_wann
+      !    deleig_a_b(i) = real(mu_ten_a_b(i,i),dp)
+      !  enddo
+      !
+      !endif
 
     else 
 
