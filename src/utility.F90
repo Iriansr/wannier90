@@ -51,6 +51,7 @@ module w90_utility
   public :: utility_zdotu
   public :: utility_diagonalize
   public :: utility_expsh !ALVARO
+  public :: utility_logu !ALVARO
 
 contains
 
@@ -681,8 +682,8 @@ contains
   function utility_expsh(mat,dim) result(expsh)!ALVARO
     !==================================================================!
     !                                                                  !
-    !!Given a Hermitian dim x dim matrix H, computes the unitary       !
-    ! dim x dim matrix U such that U = exp(iH).                        !
+    !!Given a Hermitian dim x dim matrix mat, computes the unitary     !
+    ! dim x dim matrix expsh such that expsh = exp(i*mat).             !
     !                                                                  !
     !==================================================================! 
 
@@ -694,6 +695,7 @@ contains
     real(kind=dp), dimension(dim) :: eig
     integer :: i
 
+    expsh = 0.d0
     call utility_diagonalize(mat,dim,eig,rot)
     do i = 1, dim
       expsh(i,i) = exp(cmplx_i*eig(i))
@@ -701,6 +703,133 @@ contains
     expsh = utility_rotate(expsh,rot,dim)
 
   end function utility_expsh
+
+    !===========================================================!
+  function utility_logu(mat,dim) result(logu)!ALVARO
+    !==================================================================!
+    !                                                                  !
+    !!Given a unitary dim x dim matrix mat, computes the Hermitian     !
+    ! dim x dim matrix logu such that logu = -i*log(mat).              !
+    !                                                                  !
+    !==================================================================! 
+
+    use w90_constants, only: dp, cmplx_i
+
+    complex(kind=dp), dimension(:,:), intent(in) :: mat
+    integer, intent(in) :: dim
+    complex(kind=dp), dimension(dim,dim) :: logu, rot, inv_rot
+    complex(kind=dp), dimension(dim) :: eig
+    integer :: i
+
+    logu = 0.d0
+    call utility_dgmat(mat,dim,eig,rot,inv_rot)!inv_rot is passed as dummy array.
+    do i = 1, dim
+      logu(i,i) = log(eig(i))
+    enddo
+    call utility_inv(rot,dim,inv_rot)
+    logu = -1.d0*cmplx_i*matmul(matmul(inv_rot,logu),rot)
+
+  end function utility_logu
+
+  !===========================================================!
+  subroutine utility_dgmat(mat,dim,W,UR,UL)!ALVARO
+    !==================================================================!
+    !                                                                  !
+    !!Given a non-Hermitian dim x dim matrix mat, computes the         !
+    !eigenvalues and left, right eigenvectors*.                        !
+    !!This routine MUST be used to diagonalize unitary matrices.       !
+    !                                                                  !
+    !(*)Right eigenvectors:  mat * UR(j) = W(j) * UR(j).               !
+    !   Left eigenvectors: UL(j)^(dagger) * mat = W(j) * UL(j)^(dagger)!
+    !                                                                  !
+    !==================================================================! 
+
+    use w90_io, only: io_error, stdout
+
+    complex*16, dimension(:,:), intent(in) :: mat
+    integer, intent(in) :: dim
+    complex*16, dimension(dim), intent(out) :: W !Eigenvalues.
+    complex*16, dimension(dim,dim), intent(out) :: UR, UL !Right/left eigenvectors.
+
+    complex*16, dimension(dim,dim) :: B
+    real(8), dimension(:), allocatable :: rwork
+    complex*16, dimension(:), allocatable :: work
+    integer :: info, lwork
+
+    !Initialization.
+    B = mat
+
+    !Query optimal workspace.
+    lwork= -1
+    allocate(work(1),rwork(2*dim))
+    call zgeev('V','V',dim,B,dim,W,UL,dim,UR,dim,work,lwork,rwork,info)
+    lwork = nint(real(work(1),8))
+    deallocate(work)
+
+    !Calculation.
+    allocate(work(lwork))
+    call zgeev('V','V',dim,B,dim,W,UL,dim,UR,dim,work,lwork,rwork,info)
+
+    !Check convergence.
+    if (info .NE. 0) then
+      write (stdout, '(a,i3,a)') "Routine LAPACK: ZGEEV failed to converge."
+      write (stdout, '(a,i3,a)') "http://www.netlib.org/lapack/explore-html&
+        &/db/d55/group__complex16_g_eeigen_ga0eb4e3d75621a1ce1685064db1ac58f0.html"
+      write (stdout, '(a,i3,a)') "INFO value: ", info
+      call io_error('Error in utility_dgmat')
+    endif
+
+    deallocate(rwork, work)
+
+end subroutine utility_dgmat
+
+!===========================================================!
+subroutine utility_inv(mat,dim,inv)!ALVARO
+    !==================================================================!
+    !                                                                  !
+    !!Given a general nonsingular dim x dim matrix mat, computes the   !
+    !inverse matrix inv = mat^(-1).                                    !
+    !                                                                  !
+    !==================================================================! 
+
+  use w90_io, only: io_error, stdout
+
+  complex*16, dimension(:,:), intent(in) :: mat
+  integer, intent(in) :: dim
+  complex*16, dimension(dim,dim), intent(out) :: inv
+
+  complex*16, dimension(:), allocatable :: work
+  integer, dimension(:), allocatable :: ipiv
+  integer :: info, lwork
+
+  !Initialization.
+  allocate(ipiv(dim))
+  inv = mat
+
+  !Query optimal workspace.
+  lwork= -1
+  allocate(work(1))
+  call zgetri(dim,inv,dim,ipiv,work,lwork,info)
+  lwork = nint(real(work(1),8))
+  deallocate(work)
+
+  !Calculation.
+  allocate(work(lwork))
+  call zgetrf(dim,dim,inv,dim,ipiv,info)
+  call zgetri(dim,inv,dim,ipiv,work,lwork,info)
+
+  !Check convergence.
+  if (info .NE. 0) then
+    write (stdout, '(a,i3,a)') "Routine LAPACK: ZGETRI failed to converge."
+    write (stdout, '(a,i3,a)') "http://www.netlib.org/lapack/explore-html/d3/d01/group__complex16_g_ & 
+      &ecomputational_gab490cfc4b92edec5345479f19a9a72ca.html"
+    write (stdout, '(a,i3,a)') "INFO value: ", info
+    call io_error('Error in utility_inv')
+  endif
+
+  deallocate(ipiv, work)
+
+end subroutine utility_inv
 
   !===========================================================!
   function utility_rotate(mat, rot, dim)
