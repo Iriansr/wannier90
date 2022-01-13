@@ -50,6 +50,7 @@ module w90_utility
   public :: utility_wgauss
   public :: utility_zdotu
   public :: utility_diagonalize
+  public :: utility_expsh !ALVARO
 
 contains
 
@@ -675,6 +676,31 @@ contains
     endif
 
   end subroutine utility_diagonalize
+
+  !===========================================================!
+  function utility_expsh(mat,dim) result(expsh)!ALVARO
+    !==================================================================!
+    !                                                                  !
+    !!Given a Hermitian dim x dim matrix H, computes the unitary       !
+    ! dim x dim matrix U such that U = exp(iH).                        !
+    !                                                                  !
+    !==================================================================! 
+
+    use w90_constants, only: dp, cmplx_i
+
+    complex(kind=dp), dimension(:,:), intent(in) :: mat
+    integer, intent(in) :: dim
+    complex(kind=dp), dimension(dim,dim) :: expsh, rot
+    real(kind=dp), dimension(dim) :: eig
+    integer :: i
+
+    call utility_diagonalize(mat,dim,eig,rot)
+    do i = 1, dim
+      expsh(i,i) = exp(cmplx_i*eig(i))
+    enddo
+    expsh = utility_rotate(expsh,rot,dim)
+
+  end function utility_expsh
 
   !===========================================================!
   function utility_rotate(mat, rot, dim)
