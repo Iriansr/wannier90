@@ -260,6 +260,10 @@ module w90_parameters
   integer, public, save :: kubo_nfreq
   complex(kind=dp), allocatable, public, save :: kubo_freq_list(:)
   real(kind=dp), public, save :: kubo_eigval_max
+
+! Module  f l o q u e t
+  logical, public, save :: floquet !ALVARO
+
 ! Module  s p i n
   real(kind=dp), public, save :: spin_kmesh_spacing
   integer, public, save :: spin_kmesh(3)
@@ -1164,6 +1168,9 @@ contains
 
     berry = .false.
     call param_get_keyword('berry', found, l_value=berry)
+
+    floquet = .false. !ALVARO
+    call param_get_keyword('floquet', found, l_value=floquet)
 
     transl_inv = .false.
     call param_get_keyword('transl_inv', found, l_value=transl_inv)
@@ -3238,6 +3245,11 @@ contains
       write (stdout, '(1x,a14,2x,3F8.3,10x,a12,2x,i4,9x,a1)') &
         '|    Vector2: ', (kslice_b2(i), i=1, 3), ' Divisions:', kslice_2dkmesh(1), '|'
       write (stdout, '(1x,a78)') '*----------------------------------------------------------------------------*'
+    endif
+
+    if (floquet .or. iprint > 2) then !ALVARO
+      write (stdout, '(1x,a78)') '*--------------------------------- FLOQUET ------------------------------------*'
+      write (stdout, '(1x,a46,10x,L8,13x,a1)') '|  Compute effective Floquet Hamiltonian    :', floquet, '|'
     endif
 
     if (berry .or. iprint > 2) then
@@ -6211,6 +6223,10 @@ contains
     call comms_bcast(berry_curv_adpt_kmesh, 1)
     call comms_bcast(berry_curv_adpt_kmesh_thresh, 1)
     call comms_bcast(berry_curv_unit, len(berry_curv_unit))
+    
+    !ALVARO
+    call comms_bcast(floquet, 1)
+
 !  Stepan Tsirkin
     call comms_bcast(gyrotropic, 1)
     call comms_bcast(gyrotropic_task, len(gyrotropic_task))

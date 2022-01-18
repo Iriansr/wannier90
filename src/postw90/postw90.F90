@@ -31,6 +31,7 @@ program postw90
   use w90_spin
   use w90_kpath
   use w90_kslice
+  use w90_floquet !ALVARO
 
   use w90_boltzwann
   use w90_geninterp
@@ -230,6 +231,9 @@ program postw90
   ! Orbital magnetization
   ! -----------------------------------------------------------------
   !
+  if (floquet) call floquet_main
+  !ALVARO
+
   if (berry) call berry_main
   ! -----------------------------------------------------------------
   ! Boltzmann transport coefficients (BoltzWann module)
