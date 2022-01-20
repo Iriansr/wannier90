@@ -731,13 +731,13 @@ contains
   end function utility_logu
 
   !===========================================================!
-  subroutine utility_schur(mat,dim,T,Z,B)
+  subroutine utility_schur(mat,dim,T,Z,S)
     !==================================================================!
     !                                                                  !
     !!Given a non-Hermitian dim x dim matrix mat, computes its         !
-    !Schur decomposition mat = Z*B*Z^dagger.                           !
+    !Schur decomposition mat = Z*S*Z^dagger.                           !
     !!Note that the Schur decomposition of unitary matrices always     !
-    !involves a diagonal Schur form B, B_nm = delta_nm T_n.            !
+    !involves a diagonal Schur form S, S_nm = delta_nm T_n.            !
     !                                                                  !
     !==================================================================! 
 
@@ -748,8 +748,9 @@ contains
     complex*16, dimension(dim), intent(out) :: T !Eigenvalues (diagonal elements of B).
     complex*16, dimension(dim,dim), intent(out) :: Z !Eigenvectors.
 
-    complex*16, dimension(dim,dim), optional, intent(inout) :: B !Schur Form.
+    complex*16, dimension(dim,dim), optional, intent(out) :: S !Schur Form.
 
+    complex*16, dimension(dim,dim) :: B
     real(8), dimension(dim) :: rwork
     complex*16, dimension(:), allocatable :: work
     integer :: info, lwork, sdim
@@ -769,6 +770,8 @@ contains
     !Calculation.
     allocate(work(lwork))
     call zgees('V','N',select,dim,B,dim,sdim,T,Z,dim,work,lwork,rwork,bwork,info)
+
+    if (present(S)) S = B
 
     !Check convergence.
     if (info .NE. 0) then
