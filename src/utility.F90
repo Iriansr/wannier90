@@ -700,11 +700,11 @@ contains
     do i = 1, dim
       expsh(i,i) = exp(cmplx_i*eig(i))
     enddo
-    expsh = utility_rotate(expsh,rot,dim)
+    expsh = matmul(matmul(rot,expsh),conjg(transpose(rot))) 
 
   end function utility_expsh
 
-    !===========================================================!
+  !===========================================================!
   function utility_logu(mat,dim) result(logu)!ALVARO
     !==================================================================!
     !                                                                  !
@@ -717,19 +717,71 @@ contains
 
     complex(kind=dp), dimension(:,:), intent(in) :: mat
     integer, intent(in) :: dim
-    complex(kind=dp), dimension(dim,dim) :: logu, rot, inv_rot
+    complex(kind=dp), dimension(dim,dim) :: logu, rot
     complex(kind=dp), dimension(dim) :: eig
     integer :: i
 
     logu = 0.d0
-    call utility_dgmat(mat,dim,eig,rot,inv_rot)!inv_rot is passed as dummy array.
+    call utility_schur(mat,dim,eig,rot)
     do i = 1, dim
       logu(i,i) = log(eig(i))
     enddo
-    call utility_inv(rot,dim,inv_rot)
-    logu = -1.d0*cmplx_i*matmul(matmul(inv_rot,logu),rot)
+    logu = -cmplx_i*matmul(matmul(rot,logu),conjg(transpose(rot))) 
 
   end function utility_logu
+
+  !===========================================================!
+  subroutine utility_schur(mat,dim,T,Z,B)
+    !==================================================================!
+    !                                                                  !
+    !!Given a non-Hermitian dim x dim matrix mat, computes its         !
+    !Schur decomposition mat = Z*B*Z^dagger.                           !
+    !!Note that the Schur decomposition of unitary matrices always     !
+    !involves a diagonal Schur form B, B_nm = delta_nm T_n.            !
+    !                                                                  !
+    !==================================================================! 
+
+    use w90_io, only: io_error, stdout
+
+    complex*16, dimension(:,:), intent(in) :: mat
+    integer, intent(in) :: dim
+    complex*16, dimension(dim), intent(out) :: T !Eigenvalues (diagonal elements of B).
+    complex*16, dimension(dim,dim), intent(out) :: Z !Eigenvectors.
+
+    complex*16, dimension(dim,dim), optional, intent(inout) :: B !Schur Form.
+
+    real(8), dimension(dim) :: rwork
+    complex*16, dimension(:), allocatable :: work
+    integer :: info, lwork, sdim
+    logical, dimension(dim) :: bwork
+    logical :: select
+
+    !Initialization.
+    B = mat
+
+    !Query optimal workspace.
+    lwork= -1
+    allocate(work(1))
+    call zgees('V','N',select,dim,B,dim,sdim,T,Z,dim,work,lwork,rwork,bwork,info)
+    lwork = nint(real(work(1),8))
+    deallocate(work)
+
+    !Calculation.
+    allocate(work(lwork))
+    call zgees('V','N',select,dim,B,dim,sdim,T,Z,dim,work,lwork,rwork,bwork,info)
+
+    !Check convergence.
+    if (info .NE. 0) then
+      write (stdout, '(a,i3,a)') "Routine LAPACK: ZGEES failed to converge."
+      write (stdout, '(a,i3,a)') "http://www.netlib.org/lapack/explore-html/db/d55/&
+      group__complex16_g_eeigen_ga255e11cea9a4fdadaffd2506c86ce53b.html"
+      write (stdout, '(a,i3,a)') "INFO value: ", info
+      call io_error('Error in utility_schur')
+    endif
+
+    deallocate(work)
+
+  end subroutine utility_schur
 
   !===========================================================!
   subroutine utility_dgmat(mat,dim,W,UR,UL)!ALVARO
@@ -737,7 +789,6 @@ contains
     !                                                                  !
     !!Given a non-Hermitian dim x dim matrix mat, computes the         !
     !eigenvalues and left, right eigenvectors*.                        !
-    !!This routine MUST be used to diagonalize unitary matrices.       !
     !                                                                  !
     !(*)Right eigenvectors:  mat * UR(j) = W(j) * UR(j).               !
     !   Left eigenvectors: UL(j)^(dagger) * mat = W(j) * UL(j)^(dagger)!
