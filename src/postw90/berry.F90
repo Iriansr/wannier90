@@ -41,6 +41,8 @@ module w90_berry
   public :: berry_main, berry_get_imf_klist, berry_get_imfgh_klist, berry_get_sc_klist, &
             berry_get_jc_klist, berry_get_shc_klist, berry_get_kdotp!, berry_alpha_S, berry_alpha_beta_S, berry_beta_S !ALVARO
 
+  integer :: a, b, c, d, ad, bc !ALVARO temp
+
   ! Pseudovector <--> Antisymmetric tensor
   !
   ! x <--> (y,z)
@@ -482,6 +484,25 @@ contains
 
         if (eval_jc) then!ALVARO
           call berry_get_jc_klist(kpt, jc_k_list)
+    !***********************************************!temp
+    !Output of jc integrand.
+    open(unit=150,action="write",file='jc_kz=0.dat')
+    if (kpt(3)==0.0_dp) then
+      do i=1, kubo_nfreq
+        do ad = 1, 6
+          a = alpha_S(ad)
+          d = beta_S(ad)
+          do bc = 1, 6
+            b = alpha_S(bc)
+            c = beta_S(bc)
+            write(unit=150,fmt='(5I5, 5E18.8E3)') a, b, c, d, i, kpt(1), kpt(2), real(jc_k_list(ad,bc,i),dp),&
+            aimag(jc_k_list(ad,bc,i)), kpt(3)
+          enddo
+        enddo
+      enddo
+    endif
+    close(unit=150)
+    !***********************************************!
           jc_list = jc_list + jc_k_list*kweight
         end if
 
@@ -619,6 +640,25 @@ contains
 
         if (eval_jc) then!ALVARO
           call berry_get_jc_klist(kpt, jc_k_list)
+    !***********************************************!temp
+    !Output of jc integrand.
+    open(unit=150,action="write",file='jc_kz=0.dat')
+    if (kpt(3)==0.0_dp) then
+      do i=1, kubo_nfreq
+        do ad = 1, 6
+          a = alpha_S(ad)
+          d = beta_S(ad)
+          do bc = 1, 6
+            b = alpha_S(bc)
+            c = beta_S(bc)
+            write(unit=150,fmt='(5I5, 5E18.8E3)') a, b, c, d, i, kpt(1), kpt(2), real(jc_k_list(ad,bc,i),dp),&
+            aimag(jc_k_list(ad,bc,i)), kpt(3)
+          enddo
+        enddo
+      enddo
+    endif
+    close(unit=150)
+    !***********************************************!
           jc_list = jc_list + jc_k_list*kweight
         end if
 
