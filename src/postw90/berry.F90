@@ -1165,7 +1165,7 @@ contains
         ! --------------------------------------------------------------------
 
 
-        !fac = eV_seconds*pi*elem_charge_SI**3/(4*hbar_SI**(2)*cell_volume)
+        !fac = ToDo
         write (stdout, '(/,1x,a)') &
           '----------------------------------------------------------'
         write (stdout, '(1x,a)') &
@@ -1187,7 +1187,7 @@ contains
             open (file_unit, FILE=file_name, STATUS='UNKNOWN', FORM='FORMATTED')
             do ifreq = 1, kubo_nfreq
               write (file_unit, '(2E18.8E3)') real(kubo_freq_list(ifreq), dp), &
-              real(jc_list(il, jk, ifreq),dp), aimag(jc_list(il, jk, ifreq))
+              real(jc_list(il, jk, ifreq),dp)
             enddo
             close (file_unit)
           enddo
