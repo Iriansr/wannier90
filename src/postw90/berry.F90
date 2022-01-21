@@ -414,6 +414,7 @@ contains
       ! Loop over k-points on the irreducible wedge of the Brillouin
       ! zone, read from file 'kpoint.dat'
       !
+      open(unit=150,action="write",file='jc_kz=0.dat') !ALVARO temp
       do loop_xyz = 1, num_int_kpts_on_node(my_node_id)
         kpt(:) = int_kpts(:, loop_xyz)
         kweight = weight(loop_xyz)
@@ -501,7 +502,7 @@ contains
         enddo
       enddo
     endif
-    close(unit=150)
+
     !***********************************************!
           jc_list = jc_list + jc_k_list*kweight
         end if
@@ -559,12 +560,14 @@ contains
         end if
 
       end do !loop_xyz
+      close(unit=150) !ALVARO temp
 
     else! Do not read 'kpoint.dat'. Loop over a regular grid in the full BZ
 
       kweight = db1*db2*db3
       kweight_adpt = kweight/berry_curv_adpt_kmesh**3
 
+      open(unit=150,action="write",file='jc_kz=0.dat')!ALVARO temp
       do loop_xyz = my_node_id, PRODUCT(berry_kmesh) - 1, num_nodes
         loop_x = loop_xyz/(berry_kmesh(2)*berry_kmesh(3))
         loop_y = (loop_xyz - loop_x*(berry_kmesh(2) &
@@ -642,7 +645,7 @@ contains
           call berry_get_jc_klist(kpt, jc_k_list)
     !***********************************************!temp
     !Output of jc integrand.
-    open(unit=150,action="write",file='jc_kz=0.dat')
+
     if (kpt(3)==0.0_dp) then
       do i=1, kubo_nfreq
         do ad = 1, 6
@@ -657,7 +660,7 @@ contains
         enddo
       enddo
     endif
-    close(unit=150)
+
     !***********************************************!
           jc_list = jc_list + jc_k_list*kweight
         end if
@@ -715,6 +718,7 @@ contains
         end if
 
       end do !loop_xyz
+      close(unit=150)!ALVARO temp
 
     end if !wanint_kpoint_file
 
