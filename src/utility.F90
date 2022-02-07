@@ -682,12 +682,12 @@ contains
   function utility_expsh(mat,dim) result(expsh)!ALVARO
     !==================================================================!
     !                                                                  !
-    !!Given a Hermitian dim x dim matrix mat, computes the unitary     !
-    ! dim x dim matrix expsh such that expsh = exp(i*mat).             !
+    !!Given a Hermitian dim x dim matrix mat, computes the Hermitian   !
+    ! dim x dim matrix expsh such that expsh = exp(mat).               !
     !                                                                  !
     !==================================================================! 
 
-    use w90_constants, only: dp, cmplx_i
+    use w90_constants, only: dp
 
     complex(kind=dp), dimension(:,:), intent(in) :: mat
     integer, intent(in) :: dim
@@ -698,7 +698,7 @@ contains
     expsh = 0.d0
     call utility_diagonalize(mat,dim,eig,rot)
     do i = 1, dim
-      expsh(i,i) = exp(cmplx_i*eig(i))
+      expsh(i,i) = exp(eig(i))
     enddo
     expsh = matmul(matmul(rot,expsh),conjg(transpose(rot))) 
 
@@ -708,12 +708,12 @@ contains
   function utility_logu(mat,dim) result(logu)!ALVARO
     !==================================================================!
     !                                                                  !
-    !!Given a unitary dim x dim matrix mat, computes the Hermitian     !
-    ! dim x dim matrix logu such that logu = -i*log(mat).              !
+    !!Given an Hermitian dim x dim matrix mat, computes the Hermitian  !
+    ! dim x dim matrix logu such that logu = log(mat).                 !
     !                                                                  !
     !==================================================================! 
 
-    use w90_constants, only: dp, cmplx_i
+    use w90_constants, only: dp
 
     complex(kind=dp), dimension(:,:), intent(in) :: mat
     integer, intent(in) :: dim
@@ -726,7 +726,7 @@ contains
     do i = 1, dim
       logu(i,i) = log(eig(i))
     enddo
-    logu = -cmplx_i*matmul(matmul(rot,logu),conjg(transpose(rot))) 
+    logu = matmul(matmul(rot,logu),conjg(transpose(rot))) 
 
   end function utility_logu
 

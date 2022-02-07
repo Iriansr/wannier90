@@ -263,6 +263,7 @@ module w90_parameters
 
 ! Module  f l o q u e t
   logical, public, save :: floquet !ALVARO
+  real(kind=dp), public, save :: floquet_conv_factor
 
 ! Module  s p i n
   real(kind=dp), public, save :: spin_kmesh_spacing
@@ -1170,7 +1171,9 @@ contains
     call param_get_keyword('berry', found, l_value=berry)
 
     floquet = .false. !ALVARO
+    floquet_conv_factor = 0.01_dp
     call param_get_keyword('floquet', found, l_value=floquet)
+    call param_get_keyword('floquet_conv_factor', found, r_value=floquet_conv_factor)
 
     transl_inv = .false.
     call param_get_keyword('transl_inv', found, l_value=transl_inv)

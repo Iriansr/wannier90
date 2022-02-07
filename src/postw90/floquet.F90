@@ -30,7 +30,7 @@ module w90_floquet
             call utility_diagonalize(HH_k_t,num_wann,debug1,debug2)
             print*, debug1!(1)-debug1(2)
         call t_evol_op((/0.2_dp,0.3d0,0.4d0/), 0.0d0, 1.d0, 1000, HH_k_t)
-        HH_k_t = utility_logu(HH_k_t,num_wann)/twopi
+        HH_k_t = utility_logu(HH_k_t,num_wann)/(twopi*floquet_conv_factor)
             call utility_diagonalize(HH_k_t,num_wann,debug1,debug2)
             print*, debug1!(1)-debug1(2)
 
@@ -53,7 +53,7 @@ module w90_floquet
     subroutine t_evol_op(kpt, t0, omega, ntpts, U_k)
 
         use w90_constants, only: dp, cmplx_0, twopi
-        use w90_parameters, only : num_wann
+        use w90_parameters, only : num_wann, floquet_conv_factor
         use w90_utility, only : utility_expsh
 
         complex(kind=dp), intent(out), dimension(num_wann, num_wann) :: U_k
@@ -75,7 +75,7 @@ module w90_floquet
             t = t0 + twopi*real(it-1,dp)/(omega*real(ntpts-1,dp))
             call tdep_hamiltonian(kpt, t, omega, HH_k_t)
             !Get time evolution operator U(t, t + delta t).
-            HH_k_t = utility_expsh(twopi*HH_k_t/(omega*real(ntpts-1,dp)),num_wann)
+            HH_k_t = utility_expsh(floquet_conv_factor*twopi*HH_k_t/(omega*real(ntpts-1,dp)),num_wann)
             U_k = matmul(U_k, HH_k_t)
         enddo
 
