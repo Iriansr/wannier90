@@ -487,7 +487,7 @@ contains
           call berry_get_jc_klist(kpt, jc_k_list)
     !***********************************************!temp
     !Output of jc integrand.
-    open(unit=150,action="write",file='jc_kz=0.dat')
+    !open(unit=150,action="write",file='jc_kz=0.dat')
     if (kpt(3)==0.0_dp) then
       do i=1, kubo_nfreq
         do ad = 1, 6
