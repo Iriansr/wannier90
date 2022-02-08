@@ -50,8 +50,8 @@ module w90_utility
   public :: utility_wgauss
   public :: utility_zdotu
   public :: utility_diagonalize
-  public :: utility_expsh !ALVARO
-  public :: utility_logu !ALVARO
+  public :: utility_exph !ALVARO
+  public :: utility_logh !ALVARO
 
 contains
 
@@ -679,7 +679,7 @@ contains
   end subroutine utility_diagonalize
 
   !===========================================================!
-  function utility_expsh(mat,dim) result(expsh)!ALVARO
+  function utility_exph(mat,dim) result(expsh)!ALVARO
     !==================================================================!
     !                                                                  !
     !!Given a Hermitian dim x dim matrix mat, computes the Hermitian   !
@@ -702,10 +702,10 @@ contains
     enddo
     expsh = matmul(matmul(rot,expsh),conjg(transpose(rot))) 
 
-  end function utility_expsh
+  end function utility_exph
 
   !===========================================================!
-  function utility_logu(mat,dim) result(logu)!ALVARO
+  function utility_logh(mat,dim) result(logu)!ALVARO
     !==================================================================!
     !                                                                  !
     !!Given an Hermitian dim x dim matrix mat, computes the Hermitian  !
@@ -718,17 +718,17 @@ contains
     complex(kind=dp), dimension(:,:), intent(in) :: mat
     integer, intent(in) :: dim
     complex(kind=dp), dimension(dim,dim) :: logu, rot
-    complex(kind=dp), dimension(dim) :: eig
+    real(kind=dp), dimension(dim) :: eig
     integer :: i
 
     logu = 0.d0
-    call utility_schur(mat,dim,eig,rot)
+    call utility_diagonalize(mat,dim,eig,rot)
     do i = 1, dim
       logu(i,i) = log(eig(i))
     enddo
     logu = matmul(matmul(rot,logu),conjg(transpose(rot))) 
 
-  end function utility_logu
+  end function utility_logh
 
   !===========================================================!
   subroutine utility_schur(mat,dim,T,Z,S)
