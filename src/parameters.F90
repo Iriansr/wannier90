@@ -263,7 +263,8 @@ module w90_parameters
 
 ! Module  f l o q u e t
   logical, public, save :: floquet !ALVARO
-  real(kind=dp), public, save :: floquet_conv_factor
+  real(kind=dp), public, save :: floquet_conv_factor, omega_floq, t0
+  integer, public, save :: ntpts
 
 ! Module  s p i n
   real(kind=dp), public, save :: spin_kmesh_spacing
@@ -1172,8 +1173,14 @@ contains
 
     floquet = .false. !ALVARO
     floquet_conv_factor = 0.01_dp
+    omega_floq = 1.0_dp
+    t0 = 0.0_dp
+    ntpts = 100
     call param_get_keyword('floquet', found, l_value=floquet)
     call param_get_keyword('floquet_conv_factor', found, r_value=floquet_conv_factor)
+    call param_get_keyword('omega_floquet', found, r_value=omega_floq)
+    call param_get_keyword('t0', found, r_value=t0)
+    call param_get_keyword('ntpts', found, i_value=ntpts)
 
     transl_inv = .false.
     call param_get_keyword('transl_inv', found, l_value=transl_inv)

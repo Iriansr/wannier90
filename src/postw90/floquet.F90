@@ -12,28 +12,81 @@ module w90_floquet
 
     subroutine floquet_main
 
-        use w90_constants
-        use w90_comms
-        use w90_io
-        use w90_postw90_common
-        use w90_parameters
-        use w90_get_oper
-        use w90_utility
+        use w90_constants, only: dp, cmplx_0, cmplx_i, twopi
+        use w90_postw90_common, only: nrpts, irvec
+        use w90_parameters, only: num_kpts, kpt_latt, num_wann, omega_floq, t0, ntpts
 
-        !Placeholder.
-        complex(kind=dp), dimension(num_wann, num_wann) :: HH_k_t, debug2
-        real(kind=dp), dimension(num_wann) :: debug1
+        complex(kind=dp), dimension(num_wann, num_wann, num_kpts) :: H_F_k
+        complex(kind=dp), dimension(num_wann, num_wann, nrpts) :: H_F_R
 
-        !Test showing that the spectra of both Hamiltonians are not the same even with no t-dep driving.
-        !However, they yield the same unitary operator on exponentiation. Introducing a numerical factor multiplying the exponential seems to solve the issue.
-        call tdep_hamiltonian((/0.2_dp,0.3d0,0.4d0/), 0.0d0, 0.d0, HH_k_t)
-            call utility_diagonalize(HH_k_t,num_wann,debug1,debug2)
-            print*, debug1!(1)-debug1(2)
-        call eff_floquet_hamil((/0.2_dp,0.3d0,0.4d0/), 0.0d0, 10.d0, 1000, HH_k_t, debug1, debug2)
-            call utility_diagonalize(HH_k_t,num_wann,debug1,debug2)
-            print*, debug1!(1)-debug1(2)
+        complex(kind=dp), dimension(num_wann, num_wann, num_kpts, 3) :: A_F_k
+        complex(kind=dp), dimension(num_wann, num_wann, nrpts, 3) :: A_F_R
+
+        integer          :: ir, ik
+
+        !Get the effective Floquet Hamiltonian on the WF basis using the ab-initio kmesh.
+        H_F_R = cmplx_0
+        do ir = 1, 2!nrpts
+            do ik = 1, num_kpts
+                call eff_floquet_hamil(kpt_latt(:, ik), t0, omega_floq, ntpts, H_F_k(:, :, ik))
+                H_F_R(:, :, ir) = H_F_R(:, :, ir) + exp(-cmplx_i*twopi*dot_product(kpt_latt(:, ik), irvec(:, ir)))*H_F_k(:, :, ik)
+            enddo
+        enddo
+        H_F_R = H_F_R/real(num_kpts, dp)
+
+        !Get the Berry connection A^F_ij(R) on the Floquet gauge and the WF basis.
+        A_F_R = cmplx_0
+        do ir = 1, 2!nrpts
+            do ik = 1, num_kpts
+                call get_berry_connection_on_gauge(kpt_latt(:, ik), H_F_R, A_F_k(:, :, ik, :))
+                A_F_R(:, :, ir, :) = A_F_R(:, :, ir, :) + exp(-cmplx_i*twopi*dot_product(kpt_latt(:, ik), irvec(:, ir)))*A_F_k(:, :, ik, :)
+            enddo
+        enddo
+        A_F_R = A_F_R/real(num_kpts, dp)
 
     end subroutine floquet_main
+
+    subroutine get_berry_connection_on_gauge(kpt, H_R, A_k)
+
+        !=======================================================!
+        !                                                       !
+        !Subroutine to obtain the Berry connection on the       !
+        !k-point kpt and the gauge specified by the Hamiltonian !
+        !H_R given in the WF basis.                             !
+        !                                                       !
+        !=======================================================!
+
+        use w90_constants, only: dp, cmplx_0, cmplx_i
+        use w90_parameters, only : num_wann
+        use w90_postw90_common, only: pw90common_fourier_R_to_k_new, pw90common_fourier_R_to_k_vec, nrpts
+        use w90_utility, only: utility_diagonalize, utility_rotate
+        use w90_get_oper, only : AA_R, get_AA_R
+        use w90_wan_ham, only: wham_get_D_h_P_value
+
+        real(kind=dp), intent(in), dimension(3) :: kpt
+        complex(kind=dp), intent(in), dimension(num_wann, num_wann, nrpts) :: H_R
+        complex(kind=dp), intent(out), dimension(num_wann, num_wann, 3) :: A_k
+
+        complex(kind=dp), dimension(num_wann, num_wann) :: H_k, U_k
+        complex(kind=dp), dimension(num_wann, num_wann, 3) :: delH_k, D_k
+        real(kind=dp), dimension(num_wann) :: eig
+
+        integer :: i
+
+        !Get Berry conn. on WF basis and WF gauge.
+        call get_AA_R
+        call pw90common_fourier_R_to_k_vec(kpt, AA_R, A_k)
+
+        !Get the Hamiltonian and its derivatives on the point kpt and diagonalize it.
+        call pw90common_fourier_R_to_k_new(kpt, H_R, H_k, delH_k(:, :, 1), delH_k(:, :, 2), delH_k(:, :, 3))
+        call utility_diagonalize(H_k, num_wann, eig, U_k)
+        !Compute D_a(k)=U_k^dag.del_a(U_k) (a=x,y,z) using Eq.(24) of WYSV06 and prescription for energy denominator from BK81.
+        call wham_get_D_h_P_value(delH_k, U_k, eig, D_k)
+        !Compute the Berry connection on the desired gauge.
+        do i = 1, 3
+            A_k(:, :, i) = utility_rotate(A_k(:, :, i), U_k, num_wann) + cmplx_i*D_k(:, :, i)
+        enddo
+    end subroutine get_berry_connection_on_gauge
 
     subroutine get_q(t, omega, q) !Placeholder.
         use w90_constants, only: dp, twopi
@@ -57,8 +110,9 @@ module w90_floquet
         use w90_get_oper, only : HH_R, AA_R, get_HH_R, get_AA_R
         use w90_postw90_common, only : pw90common_fourier_R_to_k_new, pw90common_fourier_R_to_k_vec
 
-        complex(kind=dp), intent(out), dimension(num_wann, num_wann) :: H_F_k, UU_F_k
-        real(kind=dp), intent(out), dimension(num_wann) :: eig_F
+        complex(kind=dp), intent(out), dimension(num_wann, num_wann) :: H_F_k
+        complex(kind=dp), intent(out), dimension(num_wann, num_wann), optional :: UU_F_k
+        real(kind=dp), intent(out), dimension(num_wann), optional :: eig_F
         real(kind=dp), intent(in), dimension(3) :: kpt
         real(kind=dp), intent(in) :: t0, omega
         integer, intent(in) :: ntpts
@@ -83,7 +137,9 @@ module w90_floquet
 
         H_F_k = utility_logh(H_F_k,num_wann)/floquet_conv_factor
 
-        call utility_diagonalize(H_F_k, num_wann, eig_F, UU_F_k)
+        if (present(UU_F_k).AND.present(eig_F)) then
+            call utility_diagonalize(H_F_k, num_wann, eig_F, UU_F_k)
+        endif
 
     end subroutine eff_floquet_hamil
 
