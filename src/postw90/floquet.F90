@@ -16,30 +16,30 @@ module w90_floquet
         use w90_postw90_common, only: nrpts, irvec
         use w90_parameters, only: num_kpts, kpt_latt, num_wann, omega_floq, t0, ntpts
 
-        complex(kind=dp), dimension(num_wann, num_wann, num_kpts) :: H_F_k
+        complex(kind=dp), dimension(num_wann, num_wann) :: H_F_k
         complex(kind=dp), dimension(num_wann, num_wann, nrpts) :: H_F_R
 
-        complex(kind=dp), dimension(num_wann, num_wann, num_kpts, 3) :: A_F_k
+        complex(kind=dp), dimension(num_wann, num_wann, 3) :: A_F_k
         complex(kind=dp), dimension(num_wann, num_wann, nrpts, 3) :: A_F_R
 
         integer          :: ir, ik
 
         !Get the effective Floquet Hamiltonian on the WF basis using the ab-initio kmesh.
         H_F_R = cmplx_0
-        do ir = 1, 2!nrpts
-            do ik = 1, num_kpts
-                call eff_floquet_hamil(kpt_latt(:, ik), t0, omega_floq, ntpts, H_F_k(:, :, ik))
-                H_F_R(:, :, ir) = H_F_R(:, :, ir) + exp(-cmplx_i*twopi*dot_product(kpt_latt(:, ik), irvec(:, ir)))*H_F_k(:, :, ik)
+        do ik = 1, num_kpts!Compute for each k.
+            call eff_floquet_hamil(kpt_latt(:, ik), t0, omega_floq, ntpts, H_F_k)
+            do ir = 1, nrpts!Inregrate over k.
+                H_F_R(:, :, ir) = H_F_R(:, :, ir) + exp(-cmplx_i*twopi*dot_product(kpt_latt(:, ik), irvec(:, ir)))*H_F_k
             enddo
         enddo
         H_F_R = H_F_R/real(num_kpts, dp)
 
         !Get the Berry connection A^F_ij(R) on the Floquet gauge and the WF basis.
         A_F_R = cmplx_0
-        do ir = 1, 2!nrpts
-            do ik = 1, num_kpts
-                call get_berry_connection_on_gauge(kpt_latt(:, ik), H_F_R, A_F_k(:, :, ik, :))
-                A_F_R(:, :, ir, :) = A_F_R(:, :, ir, :) + exp(-cmplx_i*twopi*dot_product(kpt_latt(:, ik), irvec(:, ir)))*A_F_k(:, :, ik, :)
+        do ik = 1, num_kpts!Compute for each k.
+            call get_berry_connection_on_gauge(kpt_latt(:, ik), H_F_R, A_F_k)
+            do ir = 1, nrpts!Inregrate over k.
+                A_F_R(:, :, ir, :) = A_F_R(:, :, ir, :) + exp(-cmplx_i*twopi*dot_product(kpt_latt(:, ik), irvec(:, ir)))*A_F_k
             enddo
         enddo
         A_F_R = A_F_R/real(num_kpts, dp)
@@ -82,25 +82,18 @@ module w90_floquet
         call utility_diagonalize(H_k, num_wann, eig, U_k)
         !Compute D_a(k)=U_k^dag.del_a(U_k) (a=x,y,z) using Eq.(24) of WYSV06 and prescription for energy denominator from BK81.
         call wham_get_D_h_P_value(delH_k, U_k, eig, D_k)
-        !Compute the Berry connection on the desired gauge.
+        !Compute the Berry connection on the desired gauge (using transformation properties).
         do i = 1, 3
             A_k(:, :, i) = utility_rotate(A_k(:, :, i), U_k, num_wann) + cmplx_i*D_k(:, :, i)
         enddo
     end subroutine get_berry_connection_on_gauge
 
-    subroutine get_q(t, omega, q) !Placeholder.
+    subroutine get_q(t, omega, q) !Placeholder for driving force.
         use w90_constants, only: dp, twopi
         real(kind=dp), intent(in) :: t, omega
         real(kind=dp), intent(out), dimension(3) :: q
         q = 0.0_dp!sin(omega*t)
     end subroutine get_q
-
-    subroutine get_dq(t, omega, dq) !Placeholder.
-        use w90_constants, only: dp, twopi
-        real(kind=dp), intent(in) :: t, omega
-        real(kind=dp), intent(out), dimension(3) :: dq
-        dq = 0.0_dp!cos(omega*t)
-    end subroutine get_dq
 
     subroutine eff_floquet_hamil(kpt, t0, omega, ntpts, H_F_k, eig_F, UU_F_k)
 
@@ -130,11 +123,13 @@ module w90_floquet
         do it = 1, ntpts-1
             t = t0 + twopi*real(it-1,dp)/(omega*real(ntpts-1,dp))
             call tdep_hamiltonian(kpt, t, omega, HH_k_t)
-            !Get time evolution operator U(t, t + delta t).
+            !Get time evolution operator U(t, t + delta t) using convergence prescription.
             HH_k_t = utility_exph(floquet_conv_factor*HH_k_t/real(ntpts-1,dp),num_wann)
+            !Accumulate for all time slices.
             H_F_k = matmul(H_F_k, HH_k_t)
         enddo
 
+        !Take log with numerical convergence prescription.
         H_F_k = utility_logh(H_F_k,num_wann)/floquet_conv_factor
 
         if (present(UU_F_k).AND.present(eig_F)) then
@@ -163,32 +158,11 @@ module w90_floquet
         call get_AA_R
 
         call get_q(t, omega, q)
-        call get_dq(t, omega, dq)
-
-        !Get Wannier centres.
-        !do i = 1, num_wann
-        !    wan_centres(i,:) = AA_R(i, i, rpt_origin, :)
-        !enddo
-
-        !do ir = 1, nrpts
-        !    do i = 1, num_wann
-        !        do j = 1, num_wann
-        !            r_ij = wan_centres(i,:) - wan_centres(j,:)
-        !            !Compute time-dependent Hamiltonian in the WF basis.
-        !            if (sqrt(dot_product(r_ij,r_ij))<1.d-3) then
-        !                HH_R_t(j, i, ir) = HH_R(j, i, ir)!?????+ dot_product(dq, AA_R(j, i, ir, :)) Review theory to check if this is correct
-        !            else
-        !                HH_R_t(j, i, ir) = HH_R(j, i, ir) + dot_product(dq, AA_R(j, i, ir, :))
-        !                HH_R_t(j, i, ir) = HH_R_t(j, i, ir)*exp(cmplx_i*dot_product(q,r_ij))
-        !            endif
-        !        enddo
-        !    enddo
-        !enddo
 
         do ir = 1, nrpts
             do i = 1, num_wann
                 do j = 1, num_wann
-                    HH_R_t(j, i, ir) = HH_R(j, i, ir) + dot_product(dq, AA_R(j, i, ir, :))
+                    HH_R_t(j, i, ir) = HH_R(j, i, ir) + dot_product(q, AA_R(j, i, ir, :))
                 enddo
             enddo
         enddo
