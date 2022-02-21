@@ -185,6 +185,9 @@ program postw90
   endif
   !
   ! Now perform one or more of the following tasks
+  
+  if (floquet) call floquet_main
+  !ALVARO
 
   ! ---------------------------------------------------------------
   ! Density of states calculated using a uniform interpolation mesh
@@ -231,8 +234,6 @@ program postw90
   ! Orbital magnetization
   ! -----------------------------------------------------------------
   !
-  if (floquet) call floquet_main
-  !ALVARO
 
   if (berry) call berry_main
   ! -----------------------------------------------------------------
