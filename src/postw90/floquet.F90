@@ -3,7 +3,7 @@ module w90_floquet
     use w90_constants, only: dp
   
     implicit none
-  
+
     private
   
     public :: floquet_main
@@ -14,35 +14,45 @@ module w90_floquet
 
         use w90_constants, only: dp, cmplx_0, cmplx_i, twopi
         use w90_postw90_common, only: nrpts, irvec
-        use w90_parameters, only: num_kpts, kpt_latt, num_wann, omega_floq, t0, ntpts
+        use w90_parameters, only: num_kpts, kpt_latt, num_wann, omega_floq, t0, ntpts, floq_calc_st
+
+        use w90_get_oper, only : HH_R, AA_R, get_HH_R, get_AA_R
 
         complex(kind=dp), dimension(num_wann, num_wann) :: H_F_k
-        complex(kind=dp), dimension(num_wann, num_wann, nrpts) :: H_F_R
-
         complex(kind=dp), dimension(num_wann, num_wann, 3) :: A_F_k
-        complex(kind=dp), dimension(num_wann, num_wann, nrpts, 3) :: A_F_R
 
         integer          :: ir, ik
 
+        open(unit = 343, action = "write", file = "status.dat", status = "unknown")
+
         !Get the effective Floquet Hamiltonian on the WF basis using the ab-initio kmesh.
-        H_F_R = cmplx_0
+        HH_R = cmplx_0
         do ik = 1, num_kpts!Compute for each k.
             call eff_floquet_hamil(kpt_latt(:, ik), t0, omega_floq, ntpts, H_F_k)
+            write(unit = 343, fmt = *), "Calculating H_F(R), progress:", int(100*real(ik,dp)/num_kpts), "%"
             do ir = 1, nrpts!Inregrate over k.
-                H_F_R(:, :, ir) = H_F_R(:, :, ir) + exp(-cmplx_i*twopi*dot_product(kpt_latt(:, ik), irvec(:, ir)))*H_F_k
+                HH_R(:, :, ir) = HH_R(:, :, ir) + exp(-cmplx_i*twopi*dot_product(kpt_latt(:, ik), irvec(:, ir)))*H_F_k
             enddo
         enddo
-        H_F_R = H_F_R/real(num_kpts, dp)
+        HH_R = HH_R/real(num_kpts, dp)
 
         !Get the Berry connection A^F_ij(R) on the Floquet gauge and the WF basis.
-        A_F_R = cmplx_0
+        AA_R = cmplx_0
         do ik = 1, num_kpts!Compute for each k.
-            call get_berry_connection_on_gauge(kpt_latt(:, ik), H_F_R, A_F_k)
+            call get_berry_connection_on_gauge(kpt_latt(:, ik), HH_R, A_F_k)
+            write(unit = 343, fmt = *), "Calculating A_F(R), progress:", int(100*real(ik,dp)/num_kpts), "%"
             do ir = 1, nrpts!Inregrate over k.
-                A_F_R(:, :, ir, :) = A_F_R(:, :, ir, :) + exp(-cmplx_i*twopi*dot_product(kpt_latt(:, ik), irvec(:, ir)))*A_F_k
+                AA_R(:, :, ir, :) = AA_R(:, :, ir, :) + exp(-cmplx_i*twopi*dot_product(kpt_latt(:, ik), irvec(:, ir)))*A_F_k
             enddo
         enddo
-        A_F_R = A_F_R/real(num_kpts, dp)
+        AA_R = AA_R/real(num_kpts, dp)
+
+        close(unit = 343)
+
+        floq_calc_st = .true. !Signal that effective Floquet quantities have been calculated.
+
+        call get_HH_R
+        call get_AA_R
 
     end subroutine floquet_main
 
@@ -92,7 +102,7 @@ module w90_floquet
         use w90_constants, only: dp, twopi
         real(kind=dp), intent(in) :: t, omega
         real(kind=dp), intent(out), dimension(3) :: q
-        q = 0.0_dp!sin(omega*t)
+        q = 1.0_dp!0.0_dp!sin(omega*t)
     end subroutine get_q
 
     subroutine eff_floquet_hamil(kpt, t0, omega, ntpts, H_F_k, eig_F, UU_F_k)

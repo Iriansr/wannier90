@@ -85,7 +85,7 @@ contains
       eigval, u_matrix, have_disentangled, &
       timing_level, scissors_shift, &
       num_valence_bands, effective_model, &
-      real_lattice
+      real_lattice, floq_calc_st !ALVARO
     use w90_postw90_common, only: nrpts, rpt_origin, v_matrix, ndegen, irvec, crvec
     use w90_comms, only: on_root, comms_bcast
 
@@ -100,6 +100,8 @@ contains
     complex(kind=dp), allocatable :: sciss_q(:, :, :)
     complex(kind=dp), allocatable :: sciss_R(:, :, :)
     real(kind=dp)                 :: sciss_shift
+
+    if (.not. floq_calc_st) then !ALVARO
 
     if (timing_level > 1 .and. on_root) call io_stopwatch('get_oper: get_HH_R', 1)
 
@@ -250,6 +252,11 @@ contains
 101 call io_error('Error in get_HH_R: problem opening file '// &
                   trim(seedname)//'_HH_R.dat')
 
+  else !ALVARO
+
+  endif !ALVARO
+
+
   end subroutine get_HH_R
 
   !==================================================
@@ -265,7 +272,7 @@ contains
     use w90_constants, only: dp, cmplx_0, cmplx_i
     use w90_parameters, only: num_kpts, nntot, num_wann, wb, bk, timing_level, &
       num_bands, ndimwin, nnlist, have_disentangled, &
-      transl_inv, nncell, effective_model
+      transl_inv, nncell, effective_model, floq_calc_st !ALVARO
     use w90_postw90_common, only: nrpts
     use w90_io, only: stdout, io_file_unit, io_error, io_stopwatch, &
       seedname
@@ -285,6 +292,8 @@ contains
                                      rdum2_real, rdum2_imag, rdum3_real, rdum3_imag
     logical                       :: nn_found
     character(len=60)             :: header
+
+    if (.not. floq_calc_st) then !ALVARO
 
     if (timing_level > 1 .and. on_root) call io_stopwatch('get_oper: get_AA_R', 1)
 
@@ -505,6 +514,10 @@ contains
       ('Error: Problem reading input file '//trim(seedname)//'.mmn')
 103 call io_error('Error in get_AA_R: problem opening file '// &
                   trim(seedname)//'_AA_R.dat')
+
+else !ALVARO
+  
+endif !ALVARO
 
   end subroutine get_AA_R
 

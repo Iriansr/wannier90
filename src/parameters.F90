@@ -262,7 +262,7 @@ module w90_parameters
   real(kind=dp), public, save :: kubo_eigval_max
 
 ! Module  f l o q u e t
-  logical, public, save :: floquet !ALVARO
+  logical, public, save :: floquet, floq_calc_st !ALVARO
   real(kind=dp), public, save :: floquet_conv_factor, omega_floq, t0
   integer, public, save :: ntpts
 
@@ -1172,6 +1172,7 @@ contains
     call param_get_keyword('berry', found, l_value=berry)
 
     floquet = .false. !ALVARO
+    floq_calc_st = .false.
     floquet_conv_factor = 0.01_dp
     omega_floq = 1.0_dp
     t0 = 0.0_dp
