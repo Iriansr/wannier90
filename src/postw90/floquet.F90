@@ -61,8 +61,8 @@ module w90_floquet
         !=======================================================!
         !                                                       !
         !Subroutine to obtain the Berry connection on the       !
-        !k-point kpt and the gauge specified by the Hamiltonian !
-        !H_R given in the WF basis.                             !
+        !k-point kpt and the gauge that diagonalizes the        !
+        !Hamiltonian H_R given in the WF basis.                 !
         !                                                       !
         !=======================================================!
 
@@ -133,7 +133,8 @@ module w90_floquet
         do it = 1, ntpts-1
             t = t0 + twopi*real(it-1,dp)/(omega*real(ntpts-1,dp))
             call tdep_hamiltonian(kpt, t, omega, HH_k_t)
-            !Get time evolution operator U(t, t + delta t) using convergence prescription.
+            !Get time evolution operator U(t, t + delta t) using convergence prescription,
+            !this is equivalent to perform a Suzuki–Trotter expansion.
             HH_k_t = utility_exph(floquet_conv_factor*HH_k_t/real(ntpts-1,dp),num_wann)
             !Accumulate for all time slices.
             H_F_k = matmul(H_F_k, HH_k_t)
@@ -149,6 +150,8 @@ module w90_floquet
     end subroutine eff_floquet_hamil
 
     subroutine tdep_hamiltonian(kpt, t, omega, HH_k_t)
+
+        !Get the time-dependent Hamiltonian H(t) = H + q(t)*r.
 
         use w90_constants, only : dp, cmplx_0, cmplx_i
         use w90_postw90_common, only : nrpts, rpt_origin, irvec, pw90common_fourier_R_to_k_new
