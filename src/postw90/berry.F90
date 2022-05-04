@@ -39,7 +39,7 @@ module w90_berry
   private
 
   public :: berry_main, berry_get_imf_klist, berry_get_imfgh_klist, berry_get_sc_klist, &
-            berry_get_shc_klist, berry_get_kdotp!, berry_alpha_S, berry_alpha_beta_S, berry_beta_S
+            berry_get_shc_klist, berry_get_kdotp, berry_get_cisc_klist!, berry_alpha_S, berry_alpha_beta_S, berry_beta_S
 
   ! Pseudovector <--> Antisymmetric tensor
   !
@@ -123,6 +123,10 @@ contains
     ! shift current
     real(kind=dp), allocatable :: sc_k_list(:, :, :)
     real(kind=dp), allocatable :: sc_list(:, :, :)
+
+    ! current induced shift current
+    real(kind=dp), allocatable :: cisc_k_list(:, :, :, :)
+    real(kind=dp), allocatable :: cisc_list(:, :, :, :)
     ! kdotp
     complex(kind=dp), allocatable :: kdotp(:, :, :, :, :)
     ! Complex optical conductivity, dividided into Hermitean and
@@ -154,11 +158,11 @@ contains
 
     real(kind=dp)     :: kweight, kweight_adpt, kpt(3), kpt_ad(3), &
                          db1, db2, db3, fac, freq, rdum, vdum(3)
-    integer           :: n, i, j, k, jk, ikpt, if, ispn, ierr, loop_x, loop_y, loop_z, &
+    integer           :: n, i, j, k, jk, p, ikpt, if, ispn, ierr, loop_x, loop_y, loop_z, &
                          loop_xyz, loop_adpt, adpt_counter_list(nfermi), ifreq, &
                          file_unit
     character(len=120) :: file_name
-    logical           :: eval_ahc, eval_morb, eval_kubo, not_scannable, eval_sc, eval_shc, &
+    logical           :: eval_ahc, eval_morb, eval_kubo, not_scannable, eval_sc, eval_cisc, eval_shc, &
                          eval_kdotp
     logical           :: ladpt_kmesh
     logical           :: ladpt(nfermi)
@@ -178,12 +182,14 @@ contains
     eval_morb = .false.
     eval_kubo = .false.
     eval_sc = .false.
+    eval_cisc = .false.
     eval_shc = .false.
     eval_kdotp = .false.
     if (index(berry_task, 'ahc') > 0) eval_ahc = .true.
     if (index(berry_task, 'morb') > 0) eval_morb = .true.
     if (index(berry_task, 'kubo') > 0) eval_kubo = .true.
     if (index(berry_task, 'sc') > 0) eval_sc = .true.
+    if (index(berry_task, 'cisc') > 0) eval_cisc = .true.
     if (index(berry_task, 'shc') > 0) eval_shc = .true.
     if (index(berry_task, 'kdotp') > 0) eval_kdotp = .true.
 
@@ -248,6 +254,15 @@ contains
       sc_list = 0.0_dp
     endif
 
+    if (eval_cisc) then
+      call get_HH_R
+      call get_AA_R
+      allocate (cisc_k_list(3, 6, kubo_nfreq,3))
+      allocate (cisc_list(3, 6, kubo_nfreq,3))
+      cisc_k_list = 0.0_dp
+      cisc_list = 0.0_dp
+    endif
+
     if (eval_shc) then
       call get_HH_R
       call get_AA_R
@@ -309,6 +324,9 @@ contains
 
       if (eval_sc) write (stdout, '(/,3x,a)') &
         '* Shift current'
+
+      if (eval_cisc) write (stdout, '(/,3x,a)') &
+        '* Current indiced shift current-s 1st term'
 
       if (eval_shc) then
         write (stdout, '(/,3x,a)') '* Spin Hall Conductivity'
@@ -463,6 +481,11 @@ contains
           sc_list = sc_list + sc_k_list*kweight
         end if
 
+        if (eval_cisc) then
+          call berry_get_cisc_klist(kpt, kweight, cisc_k_list)
+          cisc_list = cisc_list + cisc_k_list*kweight
+        end if
+
         !
         ! ***END COPY OF CODE BLOCK 1***
 
@@ -595,6 +618,11 @@ contains
           sc_list = sc_list + sc_k_list*kweight
         end if
 
+        if (eval_cisc) then
+          call berry_get_cisc_klist(kpt, kweight, cisc_k_list)
+          cisc_list = cisc_list + cisc_k_list*kweight
+        end if
+
         !
         ! ***END CODE BLOCK 1***
 
@@ -677,6 +705,10 @@ contains
 
     if (eval_sc) then
       call comms_reduce(sc_list(1, 1, 1), 3*6*kubo_nfreq, 'SUM')
+    end if
+
+    if (eval_cisc) then
+      call comms_reduce(cisc_list(1, 1, 1,1), 3*3*6*kubo_nfreq, 'SUM')
     end if
 
     if (eval_shc) then
@@ -1116,6 +1148,38 @@ contains
             do ifreq = 1, kubo_nfreq
               write (file_unit, '(2E18.8E3)') real(kubo_freq_list(ifreq), dp), &
                 fac*sc_list(i, jk, ifreq)
+            enddo
+            close (file_unit)
+          enddo
+        enddo
+
+      endif
+
+      if (eval_cisc) then
+        
+        fac = eV_seconds*pi*elem_charge_SI**3/(4*hbar_SI**(2)*cell_volume)
+        write (stdout, '(/,1x,a)') &
+          '----------------------------------------------------------'
+        write (stdout, '(1x,a)') &
+          'Output data files related to current induced shift current:               '
+        write (stdout, '(1x,a)') &
+          '----------------------------------------------------------'
+
+        do i = 1, 3
+          do jk = 1, 6
+            j = alpha_S(jk)
+            k = beta_S(jk)
+            file_name = trim(seedname)//'-cisc_'// &
+                        achar(119 + i)//achar(119 + j)//achar(119 + k)//'.dat'
+            file_name = trim(file_name)
+            file_unit = io_file_unit()
+            write (stdout, '(/,3x,a)') '* '//file_name
+            open (file_unit, FILE=file_name, STATUS='UNKNOWN', FORM='FORMATTED')
+            do ifreq = 1, kubo_nfreq
+              do p = 1, 3
+                write (file_unit, *) real(kubo_freq_list(ifreq), dp), &
+                  fac*cisc_list(i, jk, ifreq,p)
+              enddo
             enddo
             close (file_unit)
           enddo
@@ -1855,23 +1919,7 @@ contains
 
   end subroutine berry_get_sc_klist
 
-  subroutine berry_get_cisc_k_list(kpt, kweight, cisc_k_list)
-    !====================================================================!
-    !                                                                    !
-    !  Contribution from point k to the nonlinear shift current
-    !  [integrand of Eq.8 IATS18]
-    !  Notation correspondence with IATS18:
-    !  AA_da_bar              <-->   \mathbbm{b}
-    !  AA_bar                 <-->   \mathbbm{a}
-    !  HH_da_bar              <-->   \mathbbm{v}
-    !  HH_dadb_bar            <-->   \mathbbm{w}
-    !  D_h(n,m)               <-->   \mathbbm{v}_{nm} * Re[1/(E_{m}-E_{n}+i*sc_eta)]
-    !  D_h_no_eta(n,m)        <-->   \mathbbm{v}_{nm} / (E_{m}-E_{n})
-    !  sum_AD                 <-->   summatory of Eq. 32 IATS18
-    !  sum_HD                 <-->   summatory of Eq. 30 IATS18
-    !  eig_da(n)-eig_da(m)    <-->   \mathbbm{Delta}_{nm}
-    !                                                                    !
-    !====================================================================!
+  subroutine berry_get_cisc_klist(kpt, kweight, cisc_k_list)
 
     ! Arguments
     !
@@ -1908,7 +1956,7 @@ contains
 
     complex(kind=dp)              :: sum_AD(3, 3), sum_HD(3, 3), r_mn(3), gen_r_nm(3)
     integer                       :: i, if, a, b, c, bc, n, m, r, ifreq, istart, iend, p
-    real(kind=dp)                 :: I_nm(3, 6), &
+    real(kind=dp)                 :: I_nm(3, 6, 3), &
                                      omega(kubo_nfreq), delta(kubo_nfreq), joint_level_spacing, &
                                      eta_smr, Delta_k, arg, vdum(3), occ_fac, wstep, wmin, wmax, &
                                      deltaen, deltaem, argen, argem
@@ -2066,7 +2114,9 @@ contains
           do bc = 1, 6
             b = alpha_S(bc)
             c = beta_S(bc)
-            I_nm(a, bc) = aimag(r_mn(b)*gen_r_nm(c) + r_mn(c)*gen_r_nm(b))
+            do p = 1, 3
+              I_nm(a, bc,p) = aimag(r_mn(b)*gen_r_nm(c) + r_mn(c)*gen_r_nm(b))*(HH_da_bar(n, n, p)*deltaen-HH_da_bar(m, m, p)*deltaem)
+            enddo
           enddo ! bc
         enddo ! a
 
@@ -2079,7 +2129,9 @@ contains
           delta = 0.0
           delta(istart:iend) = &
             utility_w0gauss_vec((eig(m) - eig(n) + omega(istart:iend))/eta_smr, kubo_smr_index)/eta_smr
-          call DGER(18, iend - istart + 1, 1.0_dp, I_nm, 1, delta(istart:iend), 1, cisc_k_list(:, :, istart:iend,:), 18)
+          do a = 1, 3
+            call DGER(18, iend - istart + 1, 1.0_dp, I_nm(:,:,a), 1, delta(istart:iend), 1, cisc_k_list(:, :, istart:iend,a), 18)
+          enddo
         endif
         ! same for delta(E_mn-w)
         istart = max(int((eig(m) - eig(n) - sc_w_thr*eta_smr - wmin)/wstep + 1), 1)
@@ -2088,17 +2140,15 @@ contains
           delta = 0.0
           delta(istart:iend) = &
             utility_w0gauss_vec((eig(n) - eig(m) + omega(istart:iend))/eta_smr, kubo_smr_index)/eta_smr
-          call DGER(18, iend - istart + 1, 1.0_dp, I_nm, 1, delta(istart:iend), 1, cisc_k_list(:, :, istart:iend,:), 18)
+            do a = 1, 3
+              call DGER(18, iend - istart + 1, 1.0_dp, I_nm(:,:,a), 1, delta(istart:iend), 1, cisc_k_list(:, :, istart:iend,a), 18)
+            enddo
         endif
-
-        do a = 1, 3!Add broadened deltas.
-          cisc_k_list(n,m,:,a) = cisc_k_list(n,m,:,a)*(HH_da_bar(n, n, a)*deltaen-HH_da_bar(m, m, a)*deltaem)
-        enddo
 
       enddo ! bands
     enddo ! bands
 
-  end subroutine berry_get_cisc_k_list
+  end subroutine berry_get_cisc_klist
 
   subroutine berry_get_shc_klist(kpt, shc_k_fermi, shc_k_freq, shc_k_band)
     !====================================================================!
