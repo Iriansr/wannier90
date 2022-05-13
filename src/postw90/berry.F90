@@ -2033,15 +2033,33 @@ contains
     ! loop on initial and final bands
     do n = 1, num_wann
 
-      eta_smr = gyrotropic_smr_fixed_en_width
+      ! set delta function smearing
+      if (kubo_adpt_smr) then
+        vdum(:) = eig_da(n, :)
+        joint_level_spacing = sqrt(dot_product(vdum(:), vdum(:)))*Delta_k
+        eta_smr = min(joint_level_spacing*kubo_adpt_smr_fac, &
+                      kubo_adpt_smr_max)
+      else
+        eta_smr = kubo_smr_fixed_en_width
+      endif
+
       argen = (eig(n) - fermi_energy_list(1))/eta_smr
-      deltaen = utility_w0gauss(arg, gyrotropic_smr_index)/eta_smr*kweight ! Broadened delta(E_nk-E_f)
+      deltaen = utility_w0gauss(arg, kubo_smr_index)/eta_smr ! Broadened delta(E_nk-E_f)
 
       do m = 1, num_wann
 
-        eta_smr = gyrotropic_smr_fixed_en_width
+        ! set delta function smearing
+        if (kubo_adpt_smr) then
+          vdum(:) = eig_da(m, :)
+          joint_level_spacing = sqrt(dot_product(vdum(:), vdum(:)))*Delta_k
+          eta_smr = min(joint_level_spacing*kubo_adpt_smr_fac, &
+                        kubo_adpt_smr_max)
+        else
+          eta_smr = kubo_smr_fixed_en_width
+        endif
+
         argem = (eig(n) - fermi_energy_list(1))/eta_smr
-        deltaem = utility_w0gauss(arg, gyrotropic_smr_index)/eta_smr*kweight ! Broadened delta(E_nk-E_f)
+        deltaem = utility_w0gauss(arg, kubo_smr_index)/eta_smr ! Broadened delta(E_nk-E_f)
 
         ! set delta function smearing
         if (kubo_adpt_smr) then
