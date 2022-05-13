@@ -1169,15 +1169,15 @@ contains
           do jk = 1, 6
             j = alpha_S(jk)
             k = beta_S(jk)
-            file_name = trim(seedname)//'-cisc_'// &
-                        achar(119 + i)//achar(119 + j)//achar(119 + k)//'.dat'
-            file_name = trim(file_name)
-            file_unit = io_file_unit()
-            write (stdout, '(/,3x,a)') '* '//file_name
-            open (file_unit, FILE=file_name, STATUS='UNKNOWN', FORM='FORMATTED')
-            do ifreq = 1, kubo_nfreq
-              do p = 1, 3
-                write (file_unit, *) real(kubo_freq_list(ifreq), dp), &
+            do p = 1, 3
+              file_name = trim(seedname)//'-cisc_'// &
+              achar(119 + i)//achar(119 + j)//achar(119 + k)//achar(119 + p)//'.dat'
+              file_name = trim(file_name)
+              file_unit = io_file_unit()
+              write (stdout, '(/,3x,a)') '* '//file_name
+              open (file_unit, FILE=file_name, STATUS='UNKNOWN', FORM='FORMATTED')
+              do ifreq = 1, kubo_nfreq
+                write (file_unit, '(2E18.8E3)') real(kubo_freq_list(ifreq), dp), &
                   fac*cisc_list(i, jk, ifreq,p)
               enddo
             enddo
