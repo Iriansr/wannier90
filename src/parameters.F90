@@ -3281,7 +3281,7 @@ contains
       else
         write (stdout, '(1x,a46,10x,a8,13x,a1)') '|  Compute Shift Current                     :', '       F', '|'
       endif
-      if (index(berry_task, 'csc') > 0) then
+      if (index(berry_task, 'cic') > 0) then
         write (stdout, '(1x,a46,10x,a8,13x,a1)') '|  CISC                                      :', '       T', '|'
       else
         write (stdout, '(1x,a46,10x,a8,13x,a1)') '|  CISC                                      :', '       F', '|'
@@ -3305,7 +3305,7 @@ contains
       write (stdout, '(1x,a46,10x,f8.3,13x,a1)') '|  Upper frequency for optical responses     :', kubo_freq_max, '|'
       write (stdout, '(1x,a46,10x,f8.3,13x,a1)') '|  Step size for optical responses           :', kubo_freq_step, '|'
       write (stdout, '(1x,a46,10x,f8.3,13x,a1)') '|  Upper eigenvalue for optical responses    :', kubo_eigval_max, '|'
-      if ((index(berry_task, 'sc') > 0) .or. (index(berry_task, 'csc') > 0)) then
+      if ((index(berry_task, 'sc') > 0) .or. (index(berry_task, 'cic') > 0)) then
         write (stdout, '(1x,a46,10x,f8.3,13x,a1)') '|  Smearing factor for shift current         :', sc_eta, '|'
         write (stdout, '(1x,a46,10x,f8.3,13x,a1)') '|  Frequency theshold for shift current      :', sc_w_thr, '|'
         write (stdout, '(1x,a46,1x,a27,3x,a1)') '|  Bloch sums                                :', &
