@@ -189,7 +189,7 @@ contains
     if (index(berry_task, 'morb') > 0) eval_morb = .true.
     if (index(berry_task, 'kubo') > 0) eval_kubo = .true.
     if (index(berry_task, 'sc') > 0) eval_sc = .true.
-    if (index(berry_task, 'cisc') > 0) eval_cisc = .true.
+    if (index(berry_task, 'cic') > 0) eval_cisc = .true.
     if (index(berry_task, 'shc') > 0) eval_shc = .true.
     if (index(berry_task, 'kdotp') > 0) eval_kdotp = .true.
 
