@@ -2058,7 +2058,7 @@ contains
           eta_smr = kubo_smr_fixed_en_width
         endif
 
-        argem = (eig(n) - fermi_energy_list(1))/eta_smr
+        argem = (eig(m) - fermi_energy_list(1))/eta_smr
         deltaem = utility_w0gauss(argem, kubo_smr_index)/eta_smr ! Broadened delta(E_nk-E_f)
 
         ! set delta function smearing
