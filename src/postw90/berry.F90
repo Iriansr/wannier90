@@ -2044,7 +2044,7 @@ contains
       endif
 
       argen = (eig(n) - fermi_energy_list(1))/eta_smr
-      deltaen = utility_w0gauss(arg, kubo_smr_index)/eta_smr ! Broadened delta(E_nk-E_f)
+      deltaen = utility_w0gauss(argen, kubo_smr_index)/eta_smr ! Broadened delta(E_nk-E_f)
 
       do m = 1, num_wann
 
@@ -2059,7 +2059,7 @@ contains
         endif
 
         argem = (eig(n) - fermi_energy_list(1))/eta_smr
-        deltaem = utility_w0gauss(arg, kubo_smr_index)/eta_smr ! Broadened delta(E_nk-E_f)
+        deltaem = utility_w0gauss(argem, kubo_smr_index)/eta_smr ! Broadened delta(E_nk-E_f)
 
         ! set delta function smearing
         if (kubo_adpt_smr) then
