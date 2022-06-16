@@ -1178,7 +1178,7 @@ contains
               open (file_unit, FILE=file_name, STATUS='UNKNOWN', FORM='FORMATTED')
               do ifreq = 1, kubo_nfreq
                 write (file_unit, *) real(kubo_freq_list(ifreq), dp), &
-                  fac*cisc_list(i, jk, ifreq,p)
+                  real(fac*cisc_list(i, jk, ifreq,p), dp), aimag(fac*cisc_list(i, jk, ifreq,p))
               enddo
             enddo
             close (file_unit)
