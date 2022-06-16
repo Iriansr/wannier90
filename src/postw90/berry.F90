@@ -125,8 +125,8 @@ contains
     real(kind=dp), allocatable :: sc_list(:, :, :)
 
     ! current induced shift current
-    real(kind=dp), allocatable :: cisc_k_list(:, :, :, :)
-    real(kind=dp), allocatable :: cisc_list(:, :, :, :)
+    complex(kind=dp), allocatable :: cisc_k_list(:, :, :, :)
+    complex(kind=dp), allocatable :: cisc_list(:, :, :, :)
     ! kdotp
     complex(kind=dp), allocatable :: kdotp(:, :, :, :, :)
     ! Complex optical conductivity, dividided into Hermitean and
@@ -1177,7 +1177,7 @@ contains
               write (stdout, '(/,3x,a)') '* '//file_name
               open (file_unit, FILE=file_name, STATUS='UNKNOWN', FORM='FORMATTED')
               do ifreq = 1, kubo_nfreq
-                write (file_unit, '(2E18.8E3)') real(kubo_freq_list(ifreq), dp), &
+                write (file_unit, *) real(kubo_freq_list(ifreq), dp), &
                   fac*cisc_list(i, jk, ifreq,p)
               enddo
             enddo
@@ -1941,7 +1941,7 @@ contains
     ! Arguments
     !
     real(kind=dp), intent(in)                        :: kpt(3), kweight
-    real(kind=dp), intent(out), dimension(:, :, :,:)     :: cisc_k_list 
+    complex(kind=dp), intent(out), dimension(:, :, :,:)     :: cisc_k_list 
 
     complex(kind=dp), allocatable :: UU(:, :)
     complex(kind=dp), allocatable :: AA(:, :, :), AA_bar(:, :, :)
@@ -1954,9 +1954,9 @@ contains
     real(kind=dp), allocatable    :: eig_da(:, :)
     real(kind=dp), allocatable    :: occ(:)
 
-    complex(kind=dp)              :: sum_AD(3, 3), sum_HD(3, 3), r_mn(3), gen_r_nm(3)
+    complex(kind=dp)              :: sum_AD(3, 3), sum_HD(3, 3), r_mn(3), gen_r_nm(3), I_nm(3, 6, 3)
     integer                       :: i, if, a, b, c, bc, n, m, r, ifreq, istart, iend, p
-    real(kind=dp)                 :: I_nm(3, 6, 3), &
+    real(kind=dp)                 :: &
                                      omega(kubo_nfreq), delta(kubo_nfreq), joint_level_spacing, &
                                      eta_smr, Delta_k, arg, vdum(3), occ_fac, wstep, wmin, wmax, &
                                      deltaen, deltaem, argen, argem
@@ -2033,15 +2033,18 @@ contains
     ! loop on initial and final bands
     do n = 1, num_wann
 
+      eta_smr = 0.025 !Fixed smearing for the deltas.
+      if (abs(eig(n)-fermi_energy_list(1))>eta_smr) cycle
+
       ! set delta function smearing
-      if (kubo_adpt_smr) then
-        vdum(:) = eig_da(n, :)
-        joint_level_spacing = sqrt(dot_product(vdum(:), vdum(:)))*Delta_k
-        eta_smr = min(joint_level_spacing*kubo_adpt_smr_fac, &
-                      kubo_adpt_smr_max)
-      else
-        eta_smr = kubo_smr_fixed_en_width
-      endif
+      !if (kubo_adpt_smr) then
+      !  vdum(:) = eig_da(n, :)
+      !  joint_level_spacing = sqrt(dot_product(vdum(:), vdum(:)))*Delta_k
+      !  eta_smr = min(joint_level_spacing*kubo_adpt_smr_fac, &
+      !                kubo_adpt_smr_max)
+      !else
+      !  eta_smr = kubo_smr_fixed_en_width
+      !endif
 
       argen = (eig(n) - fermi_energy_list(1))/eta_smr
       deltaen = utility_w0gauss(argen, kubo_smr_index)/eta_smr ! Broadened delta(E_nk-E_f)
@@ -2049,17 +2052,17 @@ contains
       do m = 1, num_wann
 
         ! set delta function smearing
-        if (kubo_adpt_smr) then
-          vdum(:) = eig_da(m, :)
-          joint_level_spacing = sqrt(dot_product(vdum(:), vdum(:)))*Delta_k
-          eta_smr = min(joint_level_spacing*kubo_adpt_smr_fac, &
-                        kubo_adpt_smr_max)
-        else
-          eta_smr = kubo_smr_fixed_en_width
-        endif
+        !if (kubo_adpt_smr) then
+        !  vdum(:) = eig_da(m, :)
+        !  joint_level_spacing = sqrt(dot_product(vdum(:), vdum(:)))*Delta_k
+        !  eta_smr = min(joint_level_spacing*kubo_adpt_smr_fac, &
+        !                kubo_adpt_smr_max)
+        !else
+        !  eta_smr = kubo_smr_fixed_en_width
+        !endif
 
-        argem = (eig(m) - fermi_energy_list(1))/eta_smr
-        deltaem = utility_w0gauss(argem, kubo_smr_index)/eta_smr ! Broadened delta(E_nk-E_f)
+        !argem = (eig(m) - fermi_energy_list(1))/eta_smr
+        !deltaem = utility_w0gauss(argem, kubo_smr_index)/eta_smr ! Broadened delta(E_nk-E_f)
 
         ! set delta function smearing
         if (kubo_adpt_smr) then
@@ -2133,7 +2136,8 @@ contains
             b = alpha_S(bc)
             c = beta_S(bc)
             do p = 1, 3
-              I_nm(a, bc,p) = aimag(r_mn(b)*gen_r_nm(c) + r_mn(c)*gen_r_nm(b))*(HH_da_bar(n, n, p)*deltaen-HH_da_bar(m, m, p)*deltaem)
+              I_nm(a, bc,p) = (r_mn(b)*gen_r_nm(c) + r_mn(c)*gen_r_nm(b))
+              I_nm(a, bc,p) = (I_nm(a, bc,p) - conjg(I_nm(a, bc,p)))*(HH_da_bar(n, n, p)*deltaen)
             enddo
           enddo ! bc
         enddo ! a
