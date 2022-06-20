@@ -2270,7 +2270,7 @@ contains
     real(kind=dp), allocatable    :: eig_da(:, :)
     real(kind=dp), allocatable    :: occ(:)
 
-    complex(kind=dp)              :: sum_AD(3, 3), sum_HD(3, 3), r_mn(3), gen_r_nm(3), I_nm(3, 6, 3)
+    complex(kind=dp)              :: sum_AD(3, 3), sum_HD(3, 3), r_mn(3), gen_r_nm(3), I_nm(3, 6, 3), integrand
     integer                       :: i, if, a, b, c, bc, n, m, r, ifreq, istart, iend, p
     real(kind=dp)                 :: &
                                      omega(kubo_nfreq), delta(kubo_nfreq), joint_level_spacing, &
@@ -2377,9 +2377,10 @@ contains
             c = beta_S(bc)
             do p = 1, 3
               do i = 1, kubo_nfreq
-              I_nm(a, bc,p) = r_mn(b)*conjg(r_mn(c))&
+              integrand = r_mn(b)*conjg(r_mn(c))&
               *(HH_da_bar(m, m, a) - HH_da_bar(n, n, a))/(eig(m) - eig(n) - omega(i))**2 + (HH_da_bar(m, m, a) - HH_da_bar(n, n, a))/(eig(m) - eig(n) + omega(i))**2
-              I_nm(a, bc,p) = (I_nm(a, bc,p) - conjg(I_nm(a, bc,p)))*(HH_da_bar(n, n, p)*deltaen)
+              integrand = (integrand - conjg(integrand))*(HH_da_bar(n, n, p)*deltaen)
+              imcisc_k_list(a,bc,i,p) = imcisc_k_list(a,bc,i,p) + integrand
               enddo ! freq
             enddo !p 
           enddo ! bc
