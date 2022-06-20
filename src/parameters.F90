@@ -1192,7 +1192,7 @@ contains
       ('Error: berry=T and berry_task is not set')
     if (berry .and. index(berry_task, 'ahc') == 0 .and. index(berry_task, 'morb') == 0 &
         .and. index(berry_task, 'kubo') == 0 .and. index(berry_task, 'sc') == 0 .and. index(berry_task, 'cic') == 0 &
-        .and. index(berry_task, 'shc') == 0 .and. index(berry_task, 'kdotp') == 0) call io_error &
+        .and. index(berry_task, 'icic') .and. index(berry_task, 'shc') == 0 .and. index(berry_task, 'kdotp') == 0) call io_error &
       ('Error: value of berry_task not recognised in param_read')
 
     ! Stepan
@@ -3286,6 +3286,11 @@ contains
       else
         write (stdout, '(1x,a46,10x,a8,13x,a1)') '|  CISC                                      :', '       F', '|'
       endif
+      if (index(berry_task, 'icic') > 0) then
+        write (stdout, '(1x,a46,10x,a8,13x,a1)') '|  CISC (Imaginary Part)                     :', '       T', '|'
+      else
+        write (stdout, '(1x,a46,10x,a8,13x,a1)') '|  CISC (Imaginary Part)                     :', '       F', '|'
+      endif
       if (index(berry_task, 'kdotp') > 0) then
         write (stdout, '(1x,a46,10x,a8,13x,a1)') '|  Compute k.p expansion coefficients        :', '       T', '|'
       else
@@ -3305,7 +3310,7 @@ contains
       write (stdout, '(1x,a46,10x,f8.3,13x,a1)') '|  Upper frequency for optical responses     :', kubo_freq_max, '|'
       write (stdout, '(1x,a46,10x,f8.3,13x,a1)') '|  Step size for optical responses           :', kubo_freq_step, '|'
       write (stdout, '(1x,a46,10x,f8.3,13x,a1)') '|  Upper eigenvalue for optical responses    :', kubo_eigval_max, '|'
-      if ((index(berry_task, 'sc') > 0) .or. (index(berry_task, 'cic') > 0)) then
+      if ((index(berry_task, 'sc') > 0) .or. (index(berry_task, 'cic') > 0) .or. (index(berry_task, 'icic') > 0)) then
         write (stdout, '(1x,a46,10x,f8.3,13x,a1)') '|  Smearing factor for shift current         :', sc_eta, '|'
         write (stdout, '(1x,a46,10x,f8.3,13x,a1)') '|  Frequency theshold for shift current      :', sc_w_thr, '|'
         write (stdout, '(1x,a46,1x,a27,3x,a1)') '|  Bloch sums                                :', &

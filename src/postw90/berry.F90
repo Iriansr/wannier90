@@ -39,7 +39,7 @@ module w90_berry
   private
 
   public :: berry_main, berry_get_imf_klist, berry_get_imfgh_klist, berry_get_sc_klist, &
-            berry_get_shc_klist, berry_get_kdotp, berry_get_cisc_klist!, berry_alpha_S, berry_alpha_beta_S, berry_beta_S
+            berry_get_shc_klist, berry_get_kdotp, berry_get_cisc_klist, berry_get_imcisc_klist!, berry_alpha_S, berry_alpha_beta_S, berry_beta_S
 
   ! Pseudovector <--> Antisymmetric tensor
   !
@@ -127,6 +127,9 @@ contains
     ! current induced shift current
     complex(kind=dp), allocatable :: cisc_k_list(:, :, :, :)
     complex(kind=dp), allocatable :: cisc_list(:, :, :, :)
+    ! current induced shift current imaginary term
+    complex(kind=dp), allocatable :: imcisc_k_list(:, :, :, :)
+    complex(kind=dp), allocatable :: imcisc_list(:, :, :, :)
     ! kdotp
     complex(kind=dp), allocatable :: kdotp(:, :, :, :, :)
     ! Complex optical conductivity, dividided into Hermitean and
@@ -162,7 +165,7 @@ contains
                          loop_xyz, loop_adpt, adpt_counter_list(nfermi), ifreq, &
                          file_unit
     character(len=120) :: file_name
-    logical           :: eval_ahc, eval_morb, eval_kubo, not_scannable, eval_sc, eval_cisc, eval_shc, &
+    logical           :: eval_ahc, eval_morb, eval_kubo, not_scannable, eval_sc, eval_cisc, eval_imcisc, eval_shc, &
                          eval_kdotp
     logical           :: ladpt_kmesh
     logical           :: ladpt(nfermi)
@@ -183,6 +186,7 @@ contains
     eval_kubo = .false.
     eval_sc = .false.
     eval_cisc = .false.
+    eval_imcisc = .false.
     eval_shc = .false.
     eval_kdotp = .false.
     if (index(berry_task, 'ahc') > 0) eval_ahc = .true.
@@ -190,6 +194,7 @@ contains
     if (index(berry_task, 'kubo') > 0) eval_kubo = .true.
     if (index(berry_task, 'sc') > 0) eval_sc = .true.
     if (index(berry_task, 'cic') > 0) eval_cisc = .true.
+    if (index(berry_task, 'icic') > 0) eval_imcisc = .true.
     if (index(berry_task, 'shc') > 0) eval_shc = .true.
     if (index(berry_task, 'kdotp') > 0) eval_kdotp = .true.
 
@@ -263,6 +268,15 @@ contains
       cisc_list = 0.0_dp
     endif
 
+    if (eval_imcisc) then
+      call get_HH_R
+      call get_AA_R
+      allocate (imcisc_k_list(3, 6, kubo_nfreq,3))
+      allocate (imcisc_list(3, 6, kubo_nfreq,3))
+      imcisc_k_list = 0.0_dp
+      imcisc_list = 0.0_dp
+    endif
+
     if (eval_shc) then
       call get_HH_R
       call get_AA_R
@@ -327,6 +341,9 @@ contains
 
       if (eval_cisc) write (stdout, '(/,3x,a)') &
         '* Current indiced shift current-s 1st term'
+
+      if (eval_imcisc) write (stdout, '(/,3x,a)') &
+        '* Current indiced shift current-s 1st term, imaginary part'
 
       if (eval_shc) then
         write (stdout, '(/,3x,a)') '* Spin Hall Conductivity'
@@ -486,6 +503,11 @@ contains
           cisc_list = cisc_list + cisc_k_list*kweight
         end if
 
+        if (eval_imcisc) then
+          call berry_get_imcisc_klist(kpt, kweight, imcisc_k_list)
+          imcisc_list = imcisc_list + imcisc_k_list*kweight
+        end if
+
         !
         ! ***END COPY OF CODE BLOCK 1***
 
@@ -623,6 +645,11 @@ contains
           cisc_list = cisc_list + cisc_k_list*kweight
         end if
 
+        if (eval_imcisc) then
+          call berry_get_imcisc_klist(kpt, kweight, imcisc_k_list)
+          imcisc_list = imcisc_list + imcisc_k_list*kweight
+        end if
+
         !
         ! ***END CODE BLOCK 1***
 
@@ -709,6 +736,10 @@ contains
 
     if (eval_cisc) then
       call comms_reduce(cisc_list(1, 1, 1,1), 3*3*6*kubo_nfreq, 'SUM')
+    end if
+
+    if (eval_imcisc) then
+      call comms_reduce(imcisc_list(1, 1, 1,1), 3*3*6*kubo_nfreq, 'SUM')
     end if
 
     if (eval_shc) then
@@ -1179,6 +1210,38 @@ contains
               do ifreq = 1, kubo_nfreq
                 write (file_unit, *) real(kubo_freq_list(ifreq), dp), &
                   real(fac*cisc_list(i, jk, ifreq,p), dp), aimag(fac*cisc_list(i, jk, ifreq,p))
+              enddo
+            enddo
+            close (file_unit)
+          enddo
+        enddo
+
+      endif
+
+      if (eval_imcisc) then
+        
+        fac = eV_seconds*elem_charge_SI**3/(4*hbar_SI**(2)*cell_volume)
+        write (stdout, '(/,1x,a)') &
+          '----------------------------------------------------------'
+        write (stdout, '(1x,a)') &
+          'Output data files related to current induced shift current:               '
+        write (stdout, '(1x,a)') &
+          '----------------------------------------------------------'
+
+        do i = 1, 3
+          do jk = 1, 6
+            j = alpha_S(jk)
+            k = beta_S(jk)
+            do p = 1, 3
+              file_name = trim(seedname)//'-imcisc_'// &
+              achar(119 + i)//achar(119 + j)//achar(119 + k)//achar(119 + p)//'.dat'
+              file_name = trim(file_name)
+              file_unit = io_file_unit()
+              write (stdout, '(/,3x,a)') '* '//file_name
+              open (file_unit, FILE=file_name, STATUS='UNKNOWN', FORM='FORMATTED')
+              do ifreq = 1, kubo_nfreq
+                write (file_unit, *) real(kubo_freq_list(ifreq), dp), &
+                  real(fac*imcisc_list(i, jk, ifreq,p), dp), aimag(fac*imcisc_list(i, jk, ifreq,p))
               enddo
             enddo
             close (file_unit)
@@ -2171,6 +2234,161 @@ contains
     enddo ! bands
 
   end subroutine berry_get_cisc_klist
+
+  subroutine berry_get_imcisc_klist(kpt, kweight, imcisc_k_list)
+
+    ! Arguments
+    !
+    use w90_constants, only: dp, cmplx_0, cmplx_i
+    use w90_utility, only: utility_re_tr, utility_im_tr, utility_w0gauss, utility_w0gauss_vec
+    use w90_parameters, only: num_wann, nfermi, kubo_nfreq, kubo_freq_list, fermi_energy_list, &
+      kubo_smr_index, berry_kmesh, kubo_adpt_smr_fac, &
+      kubo_adpt_smr_max, kubo_adpt_smr, kubo_eigval_max, &
+      kubo_smr_fixed_en_width, sc_phase_conv, sc_w_thr, sc_eta, sc_use_eta_corr, gyrotropic_smr_index, &
+      gyrotropic_smr_fixed_en_width
+    use w90_postw90_common, only: pw90common_fourier_R_to_k_vec_dadb, &
+      pw90common_fourier_R_to_k_new_second_d, pw90common_get_occ, &
+      pw90common_kmesh_spacing, pw90common_fourier_R_to_k_vec_dadb_TB_conv
+    use w90_wan_ham, only: wham_get_eig_UU_HH_JJlist, wham_get_occ_mat_list, wham_get_D_h, &
+      wham_get_eig_UU_HH_AA_sc, wham_get_eig_deleig, wham_get_D_h_P_value, &
+      wham_get_eig_deleig_TB_conv, wham_get_eig_UU_HH_AA_sc_TB_conv
+    use w90_get_oper, only: AA_R
+    use w90_utility, only: utility_rotate, utility_zdotu
+    ! Arguments
+    !
+    real(kind=dp), intent(in)                        :: kpt(3), kweight
+    complex(kind=dp), intent(out), dimension(:, :, :,:)     :: imcisc_k_list 
+
+    complex(kind=dp), allocatable :: UU(:, :)
+    complex(kind=dp), allocatable :: AA(:, :, :), AA_bar(:, :, :)
+    complex(kind=dp), allocatable :: AA_da(:, :, :, :), AA_da_bar(:, :, :, :)
+    complex(kind=dp), allocatable :: HH_da(:, :, :), HH_da_bar(:, :, :)
+    complex(kind=dp), allocatable :: HH_dadb(:, :, :, :), HH_dadb_bar(:, :, :, :)
+    complex(kind=dp), allocatable :: HH(:, :)
+    complex(kind=dp), allocatable :: D_h(:, :, :), D_h_no_eta(:, :, :)
+    real(kind=dp), allocatable    :: eig(:)
+    real(kind=dp), allocatable    :: eig_da(:, :)
+    real(kind=dp), allocatable    :: occ(:)
+
+    complex(kind=dp)              :: sum_AD(3, 3), sum_HD(3, 3), r_mn(3), gen_r_nm(3), I_nm(3, 6, 3)
+    integer                       :: i, if, a, b, c, bc, n, m, r, ifreq, istart, iend, p
+    real(kind=dp)                 :: &
+                                     omega(kubo_nfreq), delta(kubo_nfreq), joint_level_spacing, &
+                                     eta_smr, Delta_k, arg, vdum(3), occ_fac, wstep, wmin, wmax, &
+                                     deltaen, deltaem, argen, argem
+
+    allocate (UU(num_wann, num_wann))
+    allocate (AA(num_wann, num_wann, 3))
+    allocate (AA_bar(num_wann, num_wann, 3))
+    allocate (AA_da(num_wann, num_wann, 3, 3))
+    allocate (AA_da_bar(num_wann, num_wann, 3, 3))
+    allocate (HH_da(num_wann, num_wann, 3))
+    allocate (HH_da_bar(num_wann, num_wann, 3))
+    allocate (HH_dadb(num_wann, num_wann, 3, 3))
+    allocate (HH_dadb_bar(num_wann, num_wann, 3, 3))
+    allocate (HH(num_wann, num_wann))
+    allocate (D_h(num_wann, num_wann, 3))
+    allocate (D_h_no_eta(num_wann, num_wann, 3))
+    allocate (eig(num_wann))
+    allocate (occ(num_wann))
+    allocate (eig_da(num_wann, 3))
+
+    ! Initialize shift current array at point k
+    imcisc_k_list = 0.d0
+
+    ! Gather W-gauge matrix objects !
+
+    ! choose the convention for the FT sums
+    if (sc_phase_conv .eq. 1) then ! use Wannier centres in the FT exponentials (so called TB convention)
+      ! get Hamiltonian and its first and second derivatives
+      ! Note that below we calculate the UU matrix--> we have to use the same UU from here on for
+      ! maintaining the gauge-covariance of the whole matrix element
+      call wham_get_eig_UU_HH_AA_sc_TB_conv(kpt, eig, UU, HH, HH_da, HH_dadb)
+      ! get position operator and its derivative
+      ! note that AA_da(:,:,a,b) \propto \sum_R exp(iRk)*iR_{b}*<0|r_{a}|R>
+      call pw90common_fourier_R_to_k_vec_dadb_TB_conv(kpt, AA_R, OO_da=AA, OO_dadb=AA_da)
+      ! get eigenvalues and their k-derivatives
+      call wham_get_eig_deleig_TB_conv(kpt, eig, eig_da, HH_da, UU)
+    elseif (sc_phase_conv .eq. 2) then ! do not use Wannier centres in the FT exponentials (usual W90 convention)
+      ! same as above
+      call wham_get_eig_UU_HH_AA_sc(kpt, eig, UU, HH, HH_da, HH_dadb)
+      call pw90common_fourier_R_to_k_vec_dadb(kpt, AA_R, OO_da=AA, OO_dadb=AA_da)
+      call wham_get_eig_deleig(kpt, eig, eig_da, HH, HH_da, UU)
+    end if
+
+    ! get electronic occupations
+    call pw90common_get_occ(eig, occ, fermi_energy_list(1))
+
+    ! get D_h (Eq. (24) WYSV06)
+    call wham_get_D_h_P_value(HH_da, UU, eig, D_h)
+    call wham_get_D_h(HH_da, UU, eig, D_h_no_eta)
+
+    ! calculate k-spacing in case of adaptive smearing
+    if (kubo_adpt_smr) Delta_k = pw90common_kmesh_spacing(berry_kmesh)
+
+    ! rotate quantities from W to H gauge (we follow wham_get_D_h for delHH_bar_i)
+    do a = 1, 3
+      ! Berry connection A
+      AA_bar(:, :, a) = utility_rotate(AA(:, :, a), UU, num_wann)
+      ! first derivative of Hamiltonian dH_da
+      HH_da_bar(:, :, a) = utility_rotate(HH_da(:, :, a), UU, num_wann)
+      do b = 1, 3
+        ! derivative of Berry connection dA_da
+        AA_da_bar(:, :, a, b) = utility_rotate(AA_da(:, :, a, b), UU, num_wann)
+        ! second derivative of Hamiltonian d^{2}H_dadb
+        HH_dadb_bar(:, :, a, b) = utility_rotate(HH_dadb(:, :, a, b), UU, num_wann)
+      enddo
+    enddo
+
+    ! setup for frequency-related quantities
+    omega = real(kubo_freq_list(:), dp)
+    wmin = omega(1)
+    wmax = omega(kubo_nfreq)
+    wstep = omega(2) - omega(1)
+
+    ! loop on initial and final bands
+    do n = 1, num_wann
+
+      eta_smr = 0.025 !Fixed smearing for the deltas.
+      if (abs(eig(n)-fermi_energy_list(1))>eta_smr) cycle
+
+      ! set delta function smearing
+      !if (kubo_adpt_smr) then
+      !  vdum(:) = eig_da(n, :)
+      !  joint_level_spacing = sqrt(dot_product(vdum(:), vdum(:)))*Delta_k
+      !  eta_smr = min(joint_level_spacing*kubo_adpt_smr_fac, &
+      !                kubo_adpt_smr_max)
+      !else
+      !  eta_smr = kubo_smr_fixed_en_width
+      !endif
+
+      argen = (eig(n) - fermi_energy_list(1))/eta_smr
+      deltaen = utility_w0gauss(argen, kubo_smr_index)/eta_smr ! Broadened delta(E_nk-E_f)
+
+      do m = 1, num_wann
+
+        ! dipole matrix element
+        r_mn(:) = AA_bar(m, n, :) + cmplx_i*D_h_no_eta(m, n, :)
+
+        ! loop over all directions
+        do a = 1, 3
+          do bc = 1, 6
+            b = alpha_S(bc)
+            c = beta_S(bc)
+            do p = 1, 3
+              do i = 1, kubo_nfreq
+              I_nm(a, bc,p) = r_mn(b)*conjg(r_mn(c))&
+              *(HH_da_bar(m, m, a) - HH_da_bar(n, n, a))/(eig(m) - eig(n) - omega(i))**2 + (HH_da_bar(m, m, a) - HH_da_bar(n, n, a))/(eig(m) - eig(n) + omega(i))**2
+              I_nm(a, bc,p) = (I_nm(a, bc,p) - conjg(I_nm(a, bc,p)))*(HH_da_bar(n, n, p)*deltaen)
+              enddo ! freq
+            enddo !p 
+          enddo ! bc
+        enddo ! a
+
+      enddo ! bands
+    enddo ! bands
+
+  end subroutine berry_get_imcisc_klist
 
   subroutine berry_get_shc_klist(kpt, shc_k_fermi, shc_k_freq, shc_k_band)
     !====================================================================!
