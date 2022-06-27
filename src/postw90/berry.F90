@@ -2200,7 +2200,7 @@ contains
             c = beta_S(bc)
             do p = 1, 3
               I_nm(a, bc,p) = (r_mn(b)*gen_r_nm(c) + r_mn(c)*gen_r_nm(b))
-              I_nm(a, bc,p) = (I_nm(a, bc,p) - conjg(I_nm(a, bc,p)))*(HH_da_bar(n, n, p)*deltaen)
+              I_nm(a, bc,p) = (I_nm(a, bc,p) - conjg(I_nm(a, bc,p)))*(eig_da(n, p)*deltaen)
             enddo
           enddo ! bc
         enddo ! a
@@ -2215,7 +2215,7 @@ contains
           delta(istart:iend) = &
             utility_w0gauss_vec((eig(m) - eig(n) + omega(istart:iend))/eta_smr, kubo_smr_index)/eta_smr
           do a = 1, 3
-            call DGER(18, iend - istart + 1, 1.0_dp, I_nm(:,:,a), 1, delta(istart:iend), 1, cisc_k_list(:, :, istart:iend,a), 18)
+            call ZGERU(18, iend - istart + 1, 1.0_dp, I_nm(:,:,a), 1, delta(istart:iend), 1, cisc_k_list(:, :, istart:iend,a), 18)
           enddo
         endif
         ! same for delta(E_mn-w)
@@ -2226,7 +2226,7 @@ contains
           delta(istart:iend) = &
             utility_w0gauss_vec((eig(n) - eig(m) + omega(istart:iend))/eta_smr, kubo_smr_index)/eta_smr
             do a = 1, 3
-              call DGER(18, iend - istart + 1, 1.0_dp, I_nm(:,:,a), 1, delta(istart:iend), 1, cisc_k_list(:, :, istart:iend,a), 18)
+              call ZGERU(18, iend - istart + 1, 1.0_dp, I_nm(:,:,a), 1, delta(istart:iend), 1, cisc_k_list(:, :, istart:iend,a), 18)
             enddo
         endif
 
