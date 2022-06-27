@@ -2378,8 +2378,8 @@ contains
             do p = 1, 3
               do i = 1, kubo_nfreq
               integrand = r_mn(b)*conjg(r_mn(c))&
-              *(HH_da_bar(m, m, a) - HH_da_bar(n, n, a))/(eig(m) - eig(n) - omega(i))**2 + (HH_da_bar(m, m, a) - HH_da_bar(n, n, a))/(eig(m) - eig(n) + omega(i))**2
-              integrand = (integrand - conjg(integrand))*(HH_da_bar(n, n, p)*deltaen)
+              *(eig_da(m, a) - eig_da(n, a))/(eig(m) - eig(n) - omega(i))**2 + (eig_da(m, a) - eig_da(n, a))/(eig(m) - eig(n) + omega(i))**2
+              integrand = (integrand - conjg(integrand))*(eig_da(n, p)*deltaen)
               imcisc_k_list(a,bc,i,p) = imcisc_k_list(a,bc,i,p) + integrand
               enddo ! freq
             enddo !p 
