@@ -2097,7 +2097,8 @@ contains
     do n = 1, num_wann
 
       eta_smr = 0.025 !Fixed smearing for the deltas.
-      if (abs(eig(n)-fermi_energy_list(1))>eta_smr) cycle
+      if (abs(eig(n)-fermi_energy_list(1))>5*eta_smr) cycle
+      print*, kpt
 
       ! set delta function smearing
       !if (kubo_adpt_smr) then
@@ -2350,7 +2351,7 @@ contains
     do n = 1, num_wann
 
       eta_smr = 0.025 !Fixed smearing for the deltas.
-      if (abs(eig(n)-fermi_energy_list(1))>eta_smr) cycle
+      if (abs(eig(n)-fermi_energy_list(1))>5*eta_smr) cycle
 
       ! set delta function smearing
       !if (kubo_adpt_smr) then
@@ -2379,7 +2380,9 @@ contains
               do i = 1, kubo_nfreq
               integrand = r_mn(b)*conjg(r_mn(c))&
               *(eig_da(m, a) - eig_da(n, a))/(eig(m) - eig(n) - omega(i))**2 + (eig_da(m, a) - eig_da(n, a))/(eig(m) - eig(n) + omega(i))**2
-              integrand = (integrand - conjg(integrand))*(eig_da(n, p)*deltaen)
+              integrand = integrand - conjg(r_mn(b))*r_mn(c)&
+              *(eig_da(n, a) - eig_da(m, a))/(eig(n) - eig(m) - omega(i))**2 + (eig_da(n, a) - eig_da(m, a))/(eig(n) - eig(m) + omega(i))**2
+              integrand = integrand*(eig_da(n, p)*deltaen)
               imcisc_k_list(a,bc,i,p) = imcisc_k_list(a,bc,i,p) + integrand
               enddo ! freq
             enddo !p 
