@@ -2379,11 +2379,11 @@ contains
             do p = 1, 3
               do i = 1, kubo_nfreq
               integrand = r_mn(b)*conjg(r_mn(c))&
-              *((eig_da(m, a) - eig_da(n, a))*(eig(m) - eig(n) - omega(i))/((eig(m) - eig(n) - omega(i))**3 + sc_eta**2) &
-              + (eig_da(m, a) - eig_da(n, a))*(eig(m) - eig(n) + omega(i))/((eig(m) - eig(n) + omega(i))**3 + sc_eta**2))
+              *(-(eig_da(m, a) - eig_da(n, a))*(sc_eta**2-(eig(m) - eig(n) - omega(i))**2)/((eig(m) - eig(n) - omega(i))**2 + sc_eta**2)**2 &
+              + -(eig_da(m, a) - eig_da(n, a))*(sc_eta**2-(eig(m) - eig(n) + omega(i))**2)/((eig(m) - eig(n) + omega(i))**2 + sc_eta**2)**2)
               integrand = integrand - conjg(r_mn(b))*r_mn(c)&
-              *((eig_da(n, a) - eig_da(m, a))*(eig(n) - eig(m) - omega(i))/((eig(n) - eig(m) - omega(i))**3 + sc_eta**2) &
-              + (eig_da(n, a) - eig_da(m, a))*(eig(n) - eig(m) + omega(i))/((eig(n) - eig(m) + omega(i))**3 + sc_eta**2))
+              *(-(eig_da(n, a) - eig_da(m, a))*(sc_eta**2-(eig(n) - eig(m) - omega(i))**2)/((eig(n) - eig(m) - omega(i))**2 + sc_eta**2)**2 &
+              + -(eig_da(n, a) - eig_da(m, a))*(sc_eta**2-(eig(n) - eig(m) + omega(i))**2)/((eig(n) - eig(m) + omega(i))**2 + sc_eta**2)**2)
               integrand = integrand*(eig_da(n, p)*deltaen)
               imcisc_k_list(a,bc,i,p) = imcisc_k_list(a,bc,i,p) + integrand
               enddo ! freq
