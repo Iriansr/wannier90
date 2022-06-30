@@ -2024,24 +2024,31 @@ contains
                                      eta_smr, Delta_k, arg, vdum(3), occ_fac, wstep, wmin, wmax, &
                                      deltaen, deltaem, argen, argem
 
+    ! Initialize shift current array at point k
+    eta_smr = 0.025
+    cisc_k_list = 0.d0
+
+    allocate (eig(num_wann))
     allocate (UU(num_wann, num_wann))
+    allocate (HH(num_wann, num_wann))
+    allocate (HH_da(num_wann, num_wann, 3))
+    allocate (HH_dadb(num_wann, num_wann, 3, 3))
+
+    call wham_get_eig_UU_HH_AA_sc(kpt, eig, UU, HH, HH_da, HH_dadb)
+    if (minval(abs(eig - fermi_energy_list(1)))>5*eta_smr) goto 2
+
+    print*, kpt
+
     allocate (AA(num_wann, num_wann, 3))
     allocate (AA_bar(num_wann, num_wann, 3))
     allocate (AA_da(num_wann, num_wann, 3, 3))
     allocate (AA_da_bar(num_wann, num_wann, 3, 3))
-    allocate (HH_da(num_wann, num_wann, 3))
     allocate (HH_da_bar(num_wann, num_wann, 3))
-    allocate (HH_dadb(num_wann, num_wann, 3, 3))
     allocate (HH_dadb_bar(num_wann, num_wann, 3, 3))
-    allocate (HH(num_wann, num_wann))
     allocate (D_h(num_wann, num_wann, 3))
     allocate (D_h_no_eta(num_wann, num_wann, 3))
-    allocate (eig(num_wann))
     allocate (occ(num_wann))
     allocate (eig_da(num_wann, 3))
-
-    ! Initialize shift current array at point k
-    cisc_k_list = 0.d0
 
     ! Gather W-gauge matrix objects !
 
@@ -2096,9 +2103,8 @@ contains
     ! loop on initial and final bands
     do n = 1, num_wann
 
-      eta_smr = 0.025 !Fixed smearing for the deltas.
-      if (abs(eig(n)-fermi_energy_list(1))>5*eta_smr) cycle
-      print*, kpt
+      !eta_smr = 0.025 !Fixed smearing for the deltas.
+      !if (abs(eig(n)-fermi_energy_list(1))>5*eta_smr) cycle
 
       ! set delta function smearing
       !if (kubo_adpt_smr) then
@@ -2234,6 +2240,8 @@ contains
       enddo ! bands
     enddo ! bands
 
+    2 continue
+
   end subroutine berry_get_cisc_klist
 
   subroutine berry_get_imcisc_klist(kpt, kweight, imcisc_k_list)
@@ -2277,25 +2285,29 @@ contains
                                      omega(kubo_nfreq), delta(kubo_nfreq), joint_level_spacing, &
                                      eta_smr, Delta_k, arg, vdum(3), occ_fac, wstep, wmin, wmax, &
                                      deltaen, deltaem, argen, argem
+    ! Initialize shift current array at point k
+    eta_smr = 0.025
+    imcisc_k_list = 0.d0
 
+    allocate (eig(num_wann))
     allocate (UU(num_wann, num_wann))
+    allocate (HH(num_wann, num_wann))
+    allocate (HH_da(num_wann, num_wann, 3))
+    allocate (HH_dadb(num_wann, num_wann, 3, 3))
+
+    call wham_get_eig_UU_HH_AA_sc(kpt, eig, UU, HH, HH_da, HH_dadb)
+    if (minval(abs(eig - fermi_energy_list(1)))>5*eta_smr) goto 2
+
     allocate (AA(num_wann, num_wann, 3))
     allocate (AA_bar(num_wann, num_wann, 3))
     allocate (AA_da(num_wann, num_wann, 3, 3))
     allocate (AA_da_bar(num_wann, num_wann, 3, 3))
-    allocate (HH_da(num_wann, num_wann, 3))
     allocate (HH_da_bar(num_wann, num_wann, 3))
-    allocate (HH_dadb(num_wann, num_wann, 3, 3))
     allocate (HH_dadb_bar(num_wann, num_wann, 3, 3))
-    allocate (HH(num_wann, num_wann))
     allocate (D_h(num_wann, num_wann, 3))
     allocate (D_h_no_eta(num_wann, num_wann, 3))
-    allocate (eig(num_wann))
     allocate (occ(num_wann))
     allocate (eig_da(num_wann, 3))
-
-    ! Initialize shift current array at point k
-    imcisc_k_list = 0.d0
 
     ! Gather W-gauge matrix objects !
 
@@ -2350,8 +2362,8 @@ contains
     ! loop on initial and final bands
     do n = 1, num_wann
 
-      eta_smr = 0.025 !Fixed smearing for the deltas.
-      if (abs(eig(n)-fermi_energy_list(1))>5*eta_smr) cycle
+      !eta_smr = 0.025 !Fixed smearing for the deltas.
+      !if (abs(eig(n)-fermi_energy_list(1))>5*eta_smr) cycle
 
       ! set delta function smearing
       !if (kubo_adpt_smr) then
@@ -2393,6 +2405,8 @@ contains
 
       enddo ! bands
     enddo ! bands
+
+    2 continue
 
   end subroutine berry_get_imcisc_klist
 
