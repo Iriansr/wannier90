@@ -2104,7 +2104,7 @@ contains
     do n = 1, num_wann
 
       !eta_smr = 0.025 !Fixed smearing for the deltas.
-      !if (abs(eig(n)-fermi_energy_list(1))>5*eta_smr) cycle
+      if (abs(eig(n)-fermi_energy_list(1))>5*eta_smr) cycle
 
       ! set delta function smearing
       !if (kubo_adpt_smr) then
@@ -2363,7 +2363,7 @@ contains
     do n = 1, num_wann
 
       !eta_smr = 0.025 !Fixed smearing for the deltas.
-      !if (abs(eig(n)-fermi_energy_list(1))>5*eta_smr) cycle
+      if (abs(eig(n)-fermi_energy_list(1))>5*eta_smr) cycle
 
       ! set delta function smearing
       !if (kubo_adpt_smr) then
