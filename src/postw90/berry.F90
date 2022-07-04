@@ -414,7 +414,6 @@ contains
       ! Loop over k-points on the irreducible wedge of the Brillouin
       ! zone, read from file 'kpoint.dat'
       !
-      open(unit=150,action="write",file='jc_kz=0.dat') !ALVARO temp
       do loop_xyz = 1, num_int_kpts_on_node(my_node_id)
         kpt(:) = int_kpts(:, loop_xyz)
         kweight = weight(loop_xyz)
@@ -485,25 +484,6 @@ contains
 
         if (eval_jc) then!ALVARO
           call berry_get_jc_klist(kpt, jc_k_list)
-    !***********************************************!temp
-    !Output of jc integrand.
-    !open(unit=150,action="write",file='jc_kz=0.dat')
-    if (kpt(3)==0.0_dp) then
-      do i=1, kubo_nfreq
-        do ad = 1, 6
-          a = alpha_S(ad)
-          d = beta_S(ad)
-          do bc = 1, 6
-            b = alpha_S(bc)
-            c = beta_S(bc)
-            write(unit=150,fmt='(5I5, 5E18.8E3)') a, b, c, d, i, kpt(1), kpt(2), real(jc_k_list(ad,bc,i),dp),&
-            aimag(jc_k_list(ad,bc,i)), kpt(3)
-          enddo
-        enddo
-      enddo
-    endif
-
-    !***********************************************!
           jc_list = jc_list + jc_k_list*kweight
         end if
 
@@ -560,14 +540,12 @@ contains
         end if
 
       end do !loop_xyz
-      close(unit=150) !ALVARO temp
 
     else! Do not read 'kpoint.dat'. Loop over a regular grid in the full BZ
 
       kweight = db1*db2*db3
       kweight_adpt = kweight/berry_curv_adpt_kmesh**3
 
-      open(unit=150,action="write",file='jc_kz=0.dat')!ALVARO temp
       do loop_xyz = my_node_id, PRODUCT(berry_kmesh) - 1, num_nodes
         loop_x = loop_xyz/(berry_kmesh(2)*berry_kmesh(3))
         loop_y = (loop_xyz - loop_x*(berry_kmesh(2) &
@@ -643,25 +621,6 @@ contains
 
         if (eval_jc) then!ALVARO
           call berry_get_jc_klist(kpt, jc_k_list)
-    !***********************************************!temp
-    !Output of jc integrand.
-
-    if (kpt(3)==0.0_dp) then
-      do i=1, kubo_nfreq
-        do ad = 1, 6
-          a = alpha_S(ad)
-          d = beta_S(ad)
-          do bc = 1, 6
-            b = alpha_S(bc)
-            c = beta_S(bc)
-            write(unit=150,fmt='(5I5, 5E18.8E3)') a, b, c, d, i, kpt(1), kpt(2), real(jc_k_list(ad,bc,i),dp),&
-            aimag(jc_k_list(ad,bc,i)), kpt(3)
-          enddo
-        enddo
-      enddo
-    endif
-
-    !***********************************************!
           jc_list = jc_list + jc_k_list*kweight
         end if
 
@@ -718,7 +677,6 @@ contains
         end if
 
       end do !loop_xyz
-      close(unit=150)!ALVARO temp
 
     end if !wanint_kpoint_file
 
@@ -1205,15 +1163,31 @@ contains
 
         ! --------------------------------------------------------------------
         ! At this point jc_list contains
-        ! 
+        !
+        ! (1/N) sum_k r_^{b}_{mn}r^{c}_{nm}*(\partial^2_{ad}w_{nm})*\delta(w_{nm}-w),
+        !
+        ! an approximation to
+        !
+        ! V_c int dk/(2.pi)^3 r_^{b}_{mn}r^{c}_{nm}*(\partial^2_{ad}w_{nm})*\delta(w_{nm}-w) dk
+        !
+        ! (V_c is the cell volume). We want
+        !
+        ! iota_{abcd}=(2*pi.e^4/(hbar^3)) int dk/(2.pi)^3 [r_^{b}_{mn}r^{c}_{nm}*(\partial^2_{ad}w_{nm})*\delta(w_{nm}-w)] dk.
         ! --------------------------------------------------------------------
+        ! We have to:
+        ! i) Divide by V_c, so the integrand will be in units of Angstroms.
+        ! ii) Multiply by 10^{-10} to pass from Angstrom to Meter.
+        ! iii) Multiply by 2*pi.e^4/(hbar^3)=3.53*10^{27}Amperes/(Seconds^2 Volts^3) to obtain the results in Amperes*Meter/(Seconds^2 Volts^3).
 
 
-        !fac = ToDo
+        fac = (1.0E-10_dp)*2*pi*elem_charge_SI**4/(hbar_SI**(3)*cell_volume)
         write (stdout, '(/,1x,a)') &
           '----------------------------------------------------------'
         write (stdout, '(1x,a)') &
-          'Output data files related to jerk current:               '
+          'Output data files related to jerk current:                '
+        write (stdout, '(1x,a)') &
+          'Factor to convert from Angstrom^4 to Ampere/(Volt^2*Sec^2):'
+        write (stdout,fmt="(2E18.8E3)") fac
         write (stdout, '(1x,a)') &
           '----------------------------------------------------------'
 
@@ -1231,7 +1205,7 @@ contains
             open (file_unit, FILE=file_name, STATUS='UNKNOWN', FORM='FORMATTED')
             do ifreq = 1, kubo_nfreq
               write (file_unit, '(2E18.8E3)') real(kubo_freq_list(ifreq), dp), &
-              real(jc_list(il, jk, ifreq),dp)
+              fac*real(jc_list(il, jk, ifreq),dp)
             enddo
             close (file_unit)
           enddo
