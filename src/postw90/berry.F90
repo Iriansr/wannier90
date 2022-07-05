@@ -1186,7 +1186,7 @@ contains
         write (stdout, '(1x,a)') &
           'Output data files related to jerk current:                '
         write (stdout, '(1x,a)') &
-          'Factor to convert from Angstrom^4 to Ampere/(Volt^2*Sec^2):'
+          'Factor to convert from Angstrom^4 to Amperes*Meter/(Volt^3*Sec^2):'
         write (stdout,fmt="(2E18.8E3)") fac
         write (stdout, '(1x,a)') &
           '----------------------------------------------------------'
