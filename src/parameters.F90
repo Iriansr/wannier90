@@ -1173,7 +1173,7 @@ contains
     if (berry .and. .not. found) call io_error &
       ('Error: berry=T and berry_task is not set')
     if (berry .and. index(berry_task, 'ahc') == 0 .and. index(berry_task, 'morb') == 0 &
-        .and. index(berry_task, 'kubo') == 0 .and. index(berry_task, 'jc') == 0 .and. index(berry_task, 'sc') == 0 & !ALVARO
+        .and. index(berry_task, 'kubo') == 0 .and. index(berry_task, 'ic') == 0 .and. index(berry_task, 'jc') == 0 .and. index(berry_task, 'sc') == 0 & !ALVARO
         .and. index(berry_task, 'shc') == 0 .and. index(berry_task, 'kdotp') == 0) call io_error &
       ('Error: value of berry_task not recognised in param_read')
 
@@ -3258,10 +3258,15 @@ contains
       else
         write (stdout, '(1x,a46,10x,a8,13x,a1)') '|  Compute Shift Current                     :', '       F', '|'
       endif
-      if (index(berry_task, 'jc') > 0) then!ALVARO
-        write (stdout, '(1x,a46,10x,a8,13x,a1)') '|  Compute Jerk Current                     :', '       T', '|'
+      if (index(berry_task, 'ic') > 0) then!ALVARO
+        write (stdout, '(1x,a46,10x,a8,13x,a1)') '|  Compute Injection Current                 :', '       T', '|'
       else
-        write (stdout, '(1x,a46,10x,a8,13x,a1)') '|  Compute Jerk Current                     :', '       F', '|'
+        write (stdout, '(1x,a46,10x,a8,13x,a1)') '|  Compute Injection Current                 :', '       F', '|'
+      endif
+      if (index(berry_task, 'jc') > 0) then!ALVARO
+        write (stdout, '(1x,a46,10x,a8,13x,a1)') '|  Compute Jerk Current                      :', '       T', '|'
+      else
+        write (stdout, '(1x,a46,10x,a8,13x,a1)') '|  Compute Jerk Current                      :', '       F', '|'
       endif
       if (index(berry_task, 'kdotp') > 0) then
         write (stdout, '(1x,a46,10x,a8,13x,a1)') '|  Compute k.p expansion coefficients        :', '       T', '|'
@@ -3290,11 +3295,13 @@ contains
         write (stdout, '(1x,a46,10x,L8,13x,a1)') '|  Finite eta correction for shift current   :', &
           sc_use_eta_corr, '|'
       end if
+      if (index(berry_task, 'ic') > 0) then!ALVARO
+        write (stdout, '(1x,a46,10x,f8.3,13x,a1)') '|  Smearing factor for injection current     :', sc_eta, '|'
+        write (stdout, '(1x,a46,10x,f8.3,13x,a1)') '|  Frequency theshold for injection current  :', sc_w_thr, '|'
+      end if
       if (index(berry_task, 'jc') > 0) then!ALVARO
         write (stdout, '(1x,a46,10x,f8.3,13x,a1)') '|  Smearing factor for jerk current         :', sc_eta, '|'
         write (stdout, '(1x,a46,10x,f8.3,13x,a1)') '|  Frequency theshold for jerk current      :', sc_w_thr, '|'
-        write (stdout, '(1x,a46,10x,L8,13x,a1)') '|  Finite eta correction for jerk current   :', &
-          sc_use_eta_corr, '|'
       end if
       if (index(berry_task, 'kdotp') > 0) then
         write (stdout, '(1x,a46,10x,f8.3,1x,f8.3,1xf8.3,1x,13x,a1)') '|  Chosen k-point kdotp_kpoint                 :', &

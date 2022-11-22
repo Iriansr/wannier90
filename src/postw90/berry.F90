@@ -39,9 +39,7 @@ module w90_berry
   private
 
   public :: berry_main, berry_get_imf_klist, berry_get_imfgh_klist, berry_get_sc_klist, &
-            berry_get_jc_klist, berry_get_shc_klist, berry_get_kdotp!, berry_alpha_S, berry_alpha_beta_S, berry_beta_S !ALVARO
-
-  integer :: a, b, c, d, ad, bc !ALVARO temp
+            berry_get_jc_klist, berry_get_ic_klist, berry_get_shc_klist, berry_get_kdotp!, berry_alpha_S, berry_alpha_beta_S, berry_beta_S !ALVARO
 
   ! Pseudovector <--> Antisymmetric tensor
   !
@@ -122,6 +120,9 @@ contains
     real(kind=dp) :: LCtil_list(3, 3, nfermi), ICtil_list(3, 3, nfermi), &
                      Morb_list(3, 3, nfermi)
     real(kind=dp) :: imf_k_list_dummy(3, 3, nfermi) ! adaptive refinement of AHC
+    ! injection current !ALVARO
+    complex(kind=dp), allocatable :: ic_k_list(:, :, :, :)
+    complex(kind=dp), allocatable :: ic_list(:, :, :, :)
     ! shift current
     real(kind=dp), allocatable :: sc_k_list(:, :, :)
     real(kind=dp), allocatable :: sc_list(:, :, :)
@@ -164,7 +165,7 @@ contains
                          file_unit
     character(len=120) :: file_name
     logical           :: eval_ahc, eval_morb, eval_kubo, not_scannable, eval_sc, eval_shc, &
-                         eval_kdotp, eval_jc!ALVARO
+                         eval_kdotp, eval_jc, eval_ic!ALVARO
     logical           :: ladpt_kmesh
     logical           :: ladpt(nfermi)
 
@@ -184,6 +185,7 @@ contains
     eval_kubo = .false.
     eval_sc = .false.
     eval_jc = .false.!ALVARO
+    eval_ic = .false.!ALVARO
     eval_shc = .false.
     eval_kdotp = .false.
     if (index(berry_task, 'ahc') > 0) eval_ahc = .true.
@@ -191,6 +193,7 @@ contains
     if (index(berry_task, 'kubo') > 0) eval_kubo = .true.
     if (index(berry_task, 'sc') > 0) eval_sc = .true.
     if (index(berry_task, 'jc') > 0) eval_jc = .true.!ALVARO
+    if (index(berry_task, 'ic') > 0) eval_ic = .true.!ALVARO
     if (index(berry_task, 'shc') > 0) eval_shc = .true.
     if (index(berry_task, 'kdotp') > 0) eval_kdotp = .true.
 
@@ -264,6 +267,15 @@ contains
       jc_list = cmplx_0
     endif
 
+    if (eval_ic) then!ALVARO
+      call get_HH_R
+      call get_AA_R
+      allocate (ic_k_list(3, 3, 3, kubo_nfreq))
+      allocate (ic_list(3, 3, 3, kubo_nfreq))
+      ic_k_list = cmplx_0
+      ic_list = cmplx_0
+    endif
+
     if (eval_shc) then
       call get_HH_R
       call get_AA_R
@@ -328,6 +340,9 @@ contains
 
        if (eval_jc) write (stdout, '(/,3x,a)') &!ALVARO
         '* Jerk current'
+
+      if (eval_ic) write (stdout, '(/,3x,a)') &!ALVARO
+        '* Injection current'
 
       if (eval_shc) then
         write (stdout, '(/,3x,a)') '* Spin Hall Conductivity'
@@ -487,6 +502,11 @@ contains
           jc_list = jc_list + jc_k_list*kweight
         end if
 
+        if (eval_ic) then!ALVARO
+          call berry_get_ic_klist(kpt, ic_k_list)
+          ic_list = ic_list + ic_k_list*kweight
+        end if
+
         !
         ! ***END COPY OF CODE BLOCK 1***
 
@@ -624,6 +644,11 @@ contains
           jc_list = jc_list + jc_k_list*kweight
         end if
 
+        if (eval_ic) then!ALVARO
+          call berry_get_ic_klist(kpt, ic_k_list)
+          ic_list = ic_list + ic_k_list*kweight
+        end if
+
         !
         ! ***END CODE BLOCK 1***
 
@@ -710,6 +735,10 @@ contains
 
     if (eval_jc) then!ALVARO
       call comms_reduce(jc_list(1, 1, 1), 6*6*kubo_nfreq, 'SUM')
+    end if
+
+    if (eval_jc) then!ALVARO
+      call comms_reduce(ic_list(1, 1, 1, 1), 3*3*3*kubo_nfreq, 'SUM')
     end if
 
     if (eval_shc) then
@@ -1156,6 +1185,57 @@ contains
 
       endif
 
+      if (eval_ic) then!ALVARO
+        ! -----------------------------!
+        ! Injection current
+        ! -----------------------------!
+
+        ! --------------------------------------------------------------------
+        ! At this point jc_list contains
+        !
+        ! (1/N) sum_k r_^{b}_{mn}r^{c}_{nm}*(\partial_{a}eps_{nm})*\delta(w_{nm}-w),
+        !
+        ! an approximation to
+        !
+        ! V_c int dk/(2.pi)^3 r_^{b}_{mn}r^{c}_{nm}*(\partial_{a}eps_{nm})*\delta(w_{nm}-w)
+        !
+        ! (V_c is the cell volume). We want
+        !
+        ! nu_{abc}=(-pi.e^3/(hbar^2)) int dk/(2.pi)^3 [r_^{b}_{mn}r^{c}_{nm}*(\partial_{a}w_{nm})*\delta(w_{nm}-w)].
+        ! --------------------------------------------------------------------
+        ! We have to:
+        ! i) Divide by V_c, so the integrand will be adimensional.
+        ! ii) Multiply by -pi.e^3/(hbar^2). This gets the result on Amperes/Volt^2 Second.
+
+
+        fac = (-1.0_dp)*pi*elem_charge_SI**3/(hbar_SI**(2)*cell_volume)
+        write (stdout, '(/,1x,a)') &
+          '----------------------------------------------------------'
+        write (stdout, '(1x,a)') &
+          'Output data files related to injection current:           '
+        write (stdout, '(1x,a)') &
+          '----------------------------------------------------------'
+
+        do i = 1, 3
+          do j = 1, 3
+            do k = 1, 3
+              file_name = trim(seedname)//'-ic_'// &
+                        achar(119 + i)//achar(119 + j)//achar(119 + k)//'.dat'
+              file_name = trim(file_name)
+              file_unit = io_file_unit()
+              write (stdout, '(/,3x,a)') '* '//file_name
+              open (file_unit, FILE=file_name, STATUS='UNKNOWN', FORM='FORMATTED')
+              do ifreq = 1, kubo_nfreq
+                write (file_unit, '(3E18.8E3)') real(kubo_freq_list(ifreq), dp), &
+                fac*real(ic_list(i, j, k, ifreq),dp), fac*aimag(ic_list(i, j, k, ifreq))
+              enddo
+              close (file_unit)
+            enddo
+          enddo
+        enddo
+
+      endif
+
       if (eval_jc) then!ALVARO
         ! -----------------------------!
         ! Jerk current
@@ -1168,11 +1248,11 @@ contains
         !
         ! an approximation to
         !
-        ! V_c int dk/(2.pi)^3 r_^{b}_{mn}r^{c}_{nm}*(\partial^2_{ad}w_{nm})*\delta(w_{nm}-w) dk
+        ! V_c int dk/(2.pi)^3 r_^{b}_{mn}r^{c}_{nm}*(\partial^2_{ad}w_{nm})*\delta(w_{nm}-w)
         !
         ! (V_c is the cell volume). We want
         !
-        ! iota_{abcd}=(2*pi.e^4/(hbar^3)) int dk/(2.pi)^3 [r_^{b}_{mn}r^{c}_{nm}*(\partial^2_{ad}w_{nm})*\delta(w_{nm}-w)] dk.
+        ! iota_{abcd}=(2*pi.e^4/(hbar^3)) int dk/(2.pi)^3 [r_^{b}_{mn}r^{c}_{nm}*(\partial^2_{ad}w_{nm})*\delta(w_{nm}-w)].
         ! --------------------------------------------------------------------
         ! We have to:
         ! i) Divide by V_c, so the integrand will be in units of Angstroms.
@@ -1708,6 +1788,150 @@ contains
     enddo
 
   end subroutine berry_get_kubo_k
+
+  subroutine berry_get_ic_klist(kpt, ic_k_list)!ALVARO
+
+    ! Arguments
+    !
+    use w90_constants, only: dp, cmplx_0, cmplx_i
+    use w90_utility, only: utility_re_tr, utility_im_tr, utility_w0gauss, utility_w0gauss_vec
+    use w90_parameters, only: num_wann, nfermi, kubo_nfreq, kubo_freq_list, fermi_energy_list, &
+      kubo_smr_index, berry_kmesh, kubo_adpt_smr_fac, &
+      kubo_adpt_smr_max, kubo_adpt_smr, kubo_eigval_max, &
+      kubo_smr_fixed_en_width, sc_phase_conv, sc_w_thr, sc_eta, sc_use_eta_corr
+    use w90_postw90_common, only: pw90common_fourier_R_to_k_vec_dadb, &
+      pw90common_fourier_R_to_k_new_second_d, pw90common_get_occ, &
+      pw90common_fourier_R_to_k_new, &
+      pw90common_kmesh_spacing, pw90common_fourier_R_to_k_vec_dadb_TB_conv
+    use w90_wan_ham, only: wham_get_eig_UU_HH_JJlist, wham_get_occ_mat_list, wham_get_D_h, &
+      wham_get_eig_UU_HH_AA_sc, wham_get_eig_deleig, wham_get_D_h_P_value, &
+      wham_get_eig_deleig_TB_conv, wham_get_eig_UU_HH_AA_sc_TB_conv
+    use w90_get_oper, only: AA_R, HH_R
+    use w90_utility, only: utility_rotate, utility_zdotu, utility_diagonalize
+    ! Arguments
+    !
+    real(kind=dp), intent(in)                        :: kpt(3)
+    complex(kind=dp), intent(out), dimension(:, :, :, :)     :: ic_k_list
+
+    complex(kind=dp), allocatable :: UU(:, :)
+    complex(kind=dp), allocatable :: AA(:, :, :), AA_bar(:,:,:), r_pos(:,:,:)
+    complex(kind=dp), allocatable :: HH_da(:, :, :)
+    complex(kind=dp), allocatable :: HH_dadb(:, :, :, :)
+    complex(kind=dp), allocatable :: HH(:, :)
+    complex(kind=dp), allocatable :: D_h(:,:,:)
+    real(kind=dp), allocatable    :: eig(:)
+    real(kind=dp), allocatable    :: eig_da(:, :)
+    real(kind=dp), allocatable    :: occ(:)
+    real(kind=dp), allocatable    :: mu(:,:,:)
+
+    integer :: a, b, c, i, n, m, iend, istart
+    real(kind=dp) :: wmin, wmax, wstep, occ_fac, omega(kubo_nfreq), delta(kubo_nfreq), &
+    eta_smr, Delta_k, vdum(3), joint_level_spacing
+
+    allocate (UU(num_wann, num_wann))
+    allocate (AA(num_wann, num_wann, 3))
+    allocate (AA_bar(num_wann, num_wann, 3))
+    allocate (r_pos(num_wann, num_wann, 3))
+    allocate (HH_da(num_wann, num_wann, 3))
+    allocate (HH_dadb(num_wann, num_wann, 3, 3))
+    allocate (HH(num_wann, num_wann))
+    allocate (D_h(num_wann, num_wann, 3))
+    allocate (eig(num_wann))
+    allocate (eig_da(num_wann, 3))
+    allocate (occ(num_wann))
+    allocate (mu(num_wann,3,3))
+
+    !Get Hamiltonian matrix, bands, its derivatives, D_h and UU.
+
+    call pw90common_fourier_R_to_k_new_second_d(kpt, HH_R, OO=HH, &
+                                                OO_da=HH_da(:, :, :), &
+                                                OO_dadb=HH_dadb(:, :, :, :))
+    call wham_get_eig_deleig(kpt, eig, eig_da, HH, HH_da, UU)
+    call utility_diagonalize(HH, num_wann, eig, UU)
+    call wham_get_D_h_P_value(HH_da, UU, eig, D_h)
+
+    !Get Berry connection AA.
+    call pw90common_fourier_R_to_k_vec_dadb(kpt, AA_R, OO_da=AA)
+    !Obtain the position operator matrix elements in the Hamiltonian basis. See Eq. (25) WYSV06.
+    do i = 1, 3
+      AA_bar(:, :, i) = utility_rotate(AA(:, :, i), UU, num_wann)
+      r_pos(:,:,i) = AA_bar(:,:,i) + cmplx_i*D_h(:,:,i)
+    enddo
+
+    !Get electronic occupations
+    call pw90common_get_occ(eig, occ, fermi_energy_list(1))
+
+    !Calculate k-spacing in case of adaptive smearing.
+    if (kubo_adpt_smr) Delta_k = pw90common_kmesh_spacing(berry_kmesh)
+
+    !Setup for frequency-related quantities.
+    omega = real(kubo_freq_list(:), dp)
+    wmin = omega(1)
+    wmax = omega(kubo_nfreq)
+    wstep = omega(2) - omega(1)
+
+    !Initialize jc_k_list.
+    ic_k_list = cmplx_0  
+
+    !Loop on every spatial index.
+    do a = 1, 3
+
+      do b = 1, 3
+
+        do c = 1, 3
+
+          !Loop on bands.
+          do n = 1, num_wann
+            do m = 1, num_wann
+
+              !Cycle diagonal matrix elements and bands above the maximum.
+              if (n == m) cycle
+              if (eig(m) > kubo_eigval_max .or. eig(n) > kubo_eigval_max) cycle
+              !Setup T=0 occupation factors.
+              occ_fac = (occ(n) - occ(m))
+              if (abs(occ_fac) < 1e-10) cycle
+
+              !Set delta function smearing.
+              if (kubo_adpt_smr) then
+                vdum(:) = eig_da(m, :) - eig_da(n, :)
+                joint_level_spacing = sqrt(dot_product(vdum(:), vdum(:)))*Delta_k
+                eta_smr = min(joint_level_spacing*kubo_adpt_smr_fac, &
+                          kubo_adpt_smr_max)
+              else
+                eta_smr = kubo_smr_fixed_en_width
+              endif
+
+              !Restrict to energy window spanning [-sc_w_thr*eta_smr,+sc_w_thr*eta_smr],
+              !outside this range, the delta function is virtually zero.
+              if (((eig(n) - eig(m) + sc_w_thr*eta_smr < wmin) .or. (eig(n) - eig(m) - sc_w_thr*eta_smr > wmax)) .and. &
+              ((eig(m) - eig(n) + sc_w_thr*eta_smr < wmin) .or. (eig(m) - eig(n) - sc_w_thr*eta_smr > wmax))) cycle
+
+              !Compute delta(E_nm-w),
+              !choose energy window spanning [-sc_w_thr*eta_smr,+sc_w_thr*eta_smr].
+              istart = max(int((eig(n) - eig(m) - sc_w_thr*eta_smr - wmin)/wstep + 1), 1)
+              iend = min(int((eig(n) - eig(m) + sc_w_thr*eta_smr - wmin)/wstep + 1), kubo_nfreq)
+              !Multiply matrix elements with delta function for the relevant frequencies.
+              delta = 0.0 
+              if (istart <= iend) then                 
+                delta(istart:iend) = &
+                  utility_w0gauss_vec((eig(m) - eig(n) + omega(istart:iend))/eta_smr, kubo_smr_index)/eta_smr
+
+                do i=1, kubo_nfreq
+                  !Compute the integrand of Eq. (33) of 10.1103/PhysRevB.52.14636.
+                  ic_k_list(a,b,c,i) = ic_k_list(a,b,c,i) + (eig_da(m,a)-eig_da(n,a))*r_pos(n,m,b)*r_pos(m,n,c)*occ_fac*delta(i)
+                enddo
+
+              endif
+
+            enddo!m
+          enddo!n
+
+        enddo!c
+      enddo!b
+    enddo!a
+
+
+  end subroutine berry_get_ic_klist
 
   subroutine berry_get_sc_klist(kpt, sc_k_list)
     !====================================================================!
