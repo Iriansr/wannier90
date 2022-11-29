@@ -1,4 +1,4 @@
-!-*- mode: F90 -*-!
+!SR_alpha_k!-*- mode: F90 -*-!
 !------------------------------------------------------------!
 ! This file is distributed as part of the Wannier90 code and !
 ! under the terms of the GNU General Public License. See the !
@@ -121,8 +121,7 @@ contains
                      Morb_list(3, 3, nfermi)
     real(kind=dp) :: imf_k_list_dummy(3, 3, nfermi) ! adaptive refinement of AHC
     ! shift current
-    real(kind=dp), allocatable :: sc_k_list(:, :, :)
-    real(kind=dp), allocatable :: sc_list(:, :, :)
+    complex(kind=dp), allocatable :: sc_k_list(:, :, :, :), sc_list(:, :, :, :)
     ! kdotp
     complex(kind=dp), allocatable :: kdotp(:, :, :, :, :)
     ! Complex optical conductivity, dividided into Hermitean and
@@ -242,10 +241,10 @@ contains
     if (eval_sc) then
       call get_HH_R
       call get_AA_R
-      allocate (sc_k_list(3, 6, kubo_nfreq))
-      allocate (sc_list(3, 6, kubo_nfreq))
-      sc_k_list = 0.0_dp
-      sc_list = 0.0_dp
+      allocate (sc_k_list(3, 3, 3, kubo_nfreq))
+      allocate (sc_list(3, 3, 3, kubo_nfreq))
+      sc_k_list = cmplx_0
+      sc_list = cmplx_0
     endif
 
     if (eval_shc) then
@@ -676,7 +675,7 @@ contains
     endif
 
     if (eval_sc) then
-      call comms_reduce(sc_list(1, 1, 1), 3*6*kubo_nfreq, 'SUM')
+      call comms_reduce(sc_list(1, 1, 1, 1), 3*3*3*kubo_nfreq, 'SUM')
     end if
 
     if (eval_shc) then
@@ -1065,28 +1064,25 @@ contains
         ! -----------------------------!
 
         ! --------------------------------------------------------------------
-        ! At this point sc_list contains
+        ! At this point sc_list contains,
         !
-        ! (1/N) sum_k (r_^{b}r^{c}_{a}+r_^{c}r^{b}_{a})(k) delta(w),
+        ! (1/N) sum_k f_{nm} r_^{b}_{mn} r^{c}_{nm;a} [\delta(\omega_{nm} - \omega)\pm \delta(\omega_{mn} - \omega),
         !
         ! an approximation to
         !
-        ! V_c.int dk/(2.pi)^3 (r_^{b}r^{c}_{a}+r_^{c}r^{b}_{a})(k) delta(w) dk
+        ! V_c \int d^3k/(2.pi)^3 f_{nm} r_^{b}_{mn} r^{c}_{nm;a} [\delta(\omega_{nm} - \omega)\pm \delta(\omega_{mn} - \omega)
         !
         ! (V_c is the cell volume). We want
         !
-        ! sigma_{abc}=( pi.e^3/(4.hbar^2) ) int dk/(2.pi)^3 Im[ (r_^{b}r^{c}_{a}+r_^{c}r^{b}_{a})(k) delta(w) ] dk
+        ! \sigma_{abc}=( pi.e^3/(4.hbar^2) ) int \int d^3k/(2.pi)^3 f_{nm} r_^{b}_{mn} r^{c}_{nm;a} [\delta(\omega_{nm} - \omega)\pm \delta(\omega_{mn} - \omega)
         !
-        ! Note factor 1/4 instead of 1/2 as compared to SS PRB 61 5337 (2000) (Eq. 57),
-        ! because we introduce 2 delta functions instead of 1.
         ! Hence we need to multiply by  pi.e^3/(4.hbar^2.V_c).
         ! To get the nonlinear response in units of A/V^2,
         !
-        ! (i)   Divide by V_c to obtain (1/N) sum_k (r_^{b}r^{c}_{a}+r_^{c}r^{b}_{a})delta(w)/V_c, with units
-        !       of [T] (integrand terms r_^{b}r^{c}_{a} delta(w) have units of [T].[L]^3)
-        ! (ii)  Multiply by eV_seconds to convert the units of [T] from eV to seconds (coming from delta function)
+        ! (i)   Divide by V_c.
+        ! (ii)  Multiply by eV_seconds to convert the units of [T] from eV to seconds (coming from delta function).
         ! (iii) Multiply by ( pi.e^3/(4.hbar^2) ) in SI, which multiplied by [T] in seconds from (ii), gives final
-        !       units of A/V^2
+        !       units of A/V^2.
         !
         ! ===========================
         ! fac = eV_seconds.( pi.e^3/(4.hbar^2.V_c) )
@@ -1104,20 +1100,20 @@ contains
           '----------------------------------------------------------'
 
         do i = 1, 3
-          do jk = 1, 6
-            j = alpha_S(jk)
-            k = beta_S(jk)
-            file_name = trim(seedname)//'-sc_'// &
-                        achar(119 + i)//achar(119 + j)//achar(119 + k)//'.dat'
-            file_name = trim(file_name)
-            file_unit = io_file_unit()
-            write (stdout, '(/,3x,a)') '* '//file_name
-            open (file_unit, FILE=file_name, STATUS='UNKNOWN', FORM='FORMATTED')
-            do ifreq = 1, kubo_nfreq
-              write (file_unit, '(2E18.8E3)') real(kubo_freq_list(ifreq), dp), &
-                fac*sc_list(i, jk, ifreq)
+          do j = 1, 3
+            do k = 1, 3
+              file_name = trim(seedname)//'-sc_'// &
+                          achar(119 + i)//achar(119 + j)//achar(119 + k)//'.dat'
+              file_name = trim(file_name)
+              file_unit = io_file_unit()
+              write (stdout, '(/,3x,a)') '* '//file_name
+              open (file_unit, FILE=file_name, STATUS='UNKNOWN', FORM='FORMATTED')
+              do ifreq = 1, kubo_nfreq
+                write (file_unit, '(3E18.8E3)') real(kubo_freq_list(ifreq), dp), &
+                  fac*real(sc_list(i, j, k, ifreq),dp), fac*aimag(sc_list(i, j, k, ifreq))
+              enddo
+              close (file_unit)
             enddo
-            close (file_unit)
           enddo
         enddo
 
@@ -1644,7 +1640,8 @@ contains
     use w90_parameters, only: num_wann, nfermi, kubo_nfreq, kubo_freq_list, fermi_energy_list, &
       kubo_smr_index, berry_kmesh, kubo_adpt_smr_fac, &
       kubo_adpt_smr_max, kubo_adpt_smr, kubo_eigval_max, &
-      kubo_smr_fixed_en_width, sc_phase_conv, sc_w_thr, sc_eta, sc_use_eta_corr
+      kubo_smr_fixed_en_width, sc_phase_conv, sc_w_thr, sc_eta, sc_use_eta_corr, &
+      delta_parity
     use w90_postw90_common, only: pw90common_fourier_R_to_k_vec_dadb, &
       pw90common_fourier_R_to_k_new_second_d, pw90common_get_occ, &
       pw90common_kmesh_spacing, pw90common_fourier_R_to_k_vec_dadb_TB_conv
@@ -1656,7 +1653,7 @@ contains
     ! Arguments
     !
     real(kind=dp), intent(in)                        :: kpt(3)
-    real(kind=dp), intent(out), dimension(:, :, :)     :: sc_k_list
+    complex(kind=dp), intent(out), dimension(:, :, :, :)     :: sc_k_list
 
     complex(kind=dp), allocatable :: UU(:, :)
     complex(kind=dp), allocatable :: AA(:, :, :), AA_bar(:, :, :)
@@ -1669,10 +1666,9 @@ contains
     real(kind=dp), allocatable    :: eig_da(:, :)
     real(kind=dp), allocatable    :: occ(:)
 
-    complex(kind=dp)              :: sum_AD(3, 3), sum_HD(3, 3), r_mn(3), gen_r_nm(3)
+    complex(kind=dp)              :: sum_AD(3, 3), sum_HD(3, 3), r_mn(3), gen_r_nm(3), I_nm(3, 3, 3)
     integer                       :: i, if, a, b, c, bc, n, m, r, ifreq, istart, iend, p
-    real(kind=dp)                 :: I_nm(3, 6), &
-                                     omega(kubo_nfreq), delta(kubo_nfreq), joint_level_spacing, &
+    real(kind=dp)                 :: omega(kubo_nfreq), delta(kubo_nfreq), joint_level_spacing, &
                                      eta_smr, Delta_k, arg, vdum(3), occ_fac, wstep, wmin, wmax
 
     allocate (UU(num_wann, num_wann))
@@ -1692,7 +1688,7 @@ contains
     allocate (eig_da(num_wann, 3))
 
     ! Initialize shift current array at point k
-    sc_k_list = 0.d0
+    sc_k_list = cmplx_0
 
     ! Gather W-gauge matrix objects !
 
@@ -1822,14 +1818,14 @@ contains
           ! loop over the remaining two indexes of the matrix product.
           ! Note that shift current is symmetric under b <--> c exchange,
           ! so we avoid computing all combinations using alpha_S and beta_S
-          do bc = 1, 6
-            b = alpha_S(bc)
-            c = beta_S(bc)
-            I_nm(a, bc) = aimag(r_mn(b)*gen_r_nm(c) + r_mn(c)*gen_r_nm(b))
-          enddo ! bc
+          do b = 1, 3
+            do c = 1, 3
+              I_nm(a, b, c) = r_mn(b)*gen_r_nm(c)
+            enddo ! c
+          enddo ! b
         enddo ! a
 
-        ! compute delta(E_nm-w)
+        ! compute \delta(E_nm-w)
         ! choose energy window spanning [-sc_w_thr*eta_smr,+sc_w_thr*eta_smr]
         istart = max(int((eig(n) - eig(m) - sc_w_thr*eta_smr - wmin)/wstep + 1), 1)
         iend = min(int((eig(n) - eig(m) + sc_w_thr*eta_smr - wmin)/wstep + 1), kubo_nfreq)
@@ -1838,16 +1834,30 @@ contains
           delta = 0.0
           delta(istart:iend) = &
             utility_w0gauss_vec((eig(m) - eig(n) + omega(istart:iend))/eta_smr, kubo_smr_index)/eta_smr
-          call DGER(18, iend - istart + 1, occ_fac, I_nm, 1, delta(istart:iend), 1, sc_k_list(:, :, istart:iend), 18)
+            do a = 1, 3
+              do b = 1, 3 
+                do c = 1, 3
+                  sc_k_list(a, b, c, istart:iend) = sc_k_list(a, b, c, istart:iend) + &
+                  occ_fac*I_nm(a, b, c)*delta(istart:iend)
+                enddo
+              enddo
+            enddo
         endif
-        ! same for delta(E_mn-w)
+        ! same for \pm\delta(E_mn-w)
         istart = max(int((eig(m) - eig(n) - sc_w_thr*eta_smr - wmin)/wstep + 1), 1)
         iend = min(int((eig(m) - eig(n) + sc_w_thr*eta_smr - wmin)/wstep + 1), kubo_nfreq)
         if (istart <= iend) then
           delta = 0.0
           delta(istart:iend) = &
             utility_w0gauss_vec((eig(n) - eig(m) + omega(istart:iend))/eta_smr, kubo_smr_index)/eta_smr
-          call DGER(18, iend - istart + 1, occ_fac, I_nm, 1, delta(istart:iend), 1, sc_k_list(:, :, istart:iend), 18)
+            do a = 1, 3
+              do b = 1, 3 
+                do c = 1, 3
+                  sc_k_list(a, b, c, istart:iend) = sc_k_list(a, b, c, istart:iend) + &
+                  occ_fac*I_nm(a, b, c)*delta(istart:iend)*(-1.0_dp)**(delta_parity)
+                enddo
+              enddo
+            enddo
         endif
 
       enddo ! bands

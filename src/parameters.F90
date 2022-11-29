@@ -216,6 +216,7 @@ module w90_parameters
   real(kind=dp), public, save :: kdotp_kpoint(3)
   integer, public, save :: kdotp_num_bands
   integer, allocatable, public, save :: kdotp_bands(:)
+  integer, public, save :: delta_parity !ALVARO
 
   ! spin Hall conductivity
   logical, public, save :: shc_freq_scan
@@ -1185,6 +1186,12 @@ contains
     gyrotropic_box(:, :) = 0.0
     gyrotropic_degen_thresh = 0.0_dp
     call param_get_keyword('gyrotropic_degen_thresh', found, r_value=gyrotropic_degen_thresh)
+
+    !ALVARO
+    delta_parity = 0
+    call param_get_keyword('delta_parity', found, i_value=delta_parity)
+    if (((delta_parity).ne.0).and.((delta_parity).ne.1)) call io_error &
+    ('Error: berry=sc and delta_parity\=1,0')
 
     do i = 1, 3
       gyrotropic_box(i, i) = 1.0_dp
