@@ -50,7 +50,7 @@ module w90_utility
   public :: utility_wgauss
   public :: utility_zdotu
   public :: utility_diagonalize
-  public :: utility_exph !ALVARO
+  public :: utility_exphs !ALVARO
   public :: utility_logh !ALVARO
 
 contains
@@ -679,37 +679,58 @@ contains
   end subroutine utility_diagonalize
 
   !===========================================================!
-  function utility_exph(mat,dim) result(expsh)!ALVARO
+  function utility_exphs(mat, dim, skew) result(exphs)!ALVARO
     !==================================================================!
     !                                                                  !
-    !!Given a Hermitian dim x dim matrix mat, computes the Hermitian   !
-    ! dim x dim matrix expsh such that expsh = exp(mat).               !
+    !Given a Hermitian/Skew-Hermitian dim x dim matrix mat, the routine!
+    !computes the Hermitian/Skew-Hermitian dim x dim matrix exphs such !
+    !that exphs = exp(mat). If skew = .true. a Skew-Hermitian matrix is! 
+    !supposed.                                                         !
     !                                                                  !
     !==================================================================! 
 
-    use w90_constants, only: dp
+    use w90_constants, only: dp, cmplx_0, cmplx_i
 
-    complex(kind=dp), dimension(:,:), intent(in) :: mat
-    integer, intent(in) :: dim
-    complex(kind=dp), dimension(dim,dim) :: expsh, rot
-    real(kind=dp), dimension(dim) :: eig
-    integer :: i
+    complex(kind=dp), dimension(:, :), intent(in) :: mat
+    integer,          intent(in)                  :: dim
+    logical,          intent(in)                  :: skew
 
-    expsh = 0.d0
-    call utility_diagonalize(mat,dim,eig,rot)
-    do i = 1, dim
-      expsh(i,i) = exp(eig(i))
-    enddo
-    expsh = matmul(matmul(rot,expsh),conjg(transpose(rot))) 
+    complex(kind=dp), dimension(dim, dim)         :: exphs, rot
+    real(kind=dp),    dimension(dim)              :: eig
+    integer                                       :: i
 
-  end function utility_exph
+    exphs = cmplx_0
+
+    if (skew) then
+      !Skew-Hermitian matrix.
+
+      exphs = cmplx_i*mat !Now exphs is Hermitian.
+      call utility_diagonalize(exphs,dim,eig,rot)
+      exphs = cmplx_0
+      do i = 1, dim
+        exphs(i,i) = exp(-cmplx_i*eig(i))
+      enddo
+      exphs = matmul(matmul(rot,exphs),conjg(transpose(rot))) 
+
+    else
+      !Hermitian matrix.
+
+      call utility_diagonalize(mat,dim,eig,rot)
+      do i = 1, dim
+        exphs(i,i) = exp(eig(i))
+      enddo
+      exphs = matmul(matmul(rot,exphs),conjg(transpose(rot))) 
+
+    endif
+
+  end function utility_exphs
 
   !===========================================================!
   function utility_logh(mat,dim) result(logu)!ALVARO
     !==================================================================!
     !                                                                  !
-    !!Given an Hermitian dim x dim matrix mat, computes the Hermitian  !
-    ! dim x dim matrix logu such that logu = log(mat).                 !
+    !Given an Hermitian dim x dim matrix mat, computes the Hermitian   !
+    !dim x dim matrix logu such that logu = log(mat).                  !
     !                                                                  !
     !==================================================================! 
 
@@ -790,7 +811,7 @@ contains
   subroutine utility_dgmat(mat,dim,W,UR,UL)!ALVARO
     !==================================================================!
     !                                                                  !
-    !!Given a non-Hermitian dim x dim matrix mat, computes the         !
+    !Given a non-Hermitian dim x dim matrix mat, computes the          !
     !eigenvalues and left, right eigenvectors*.                        !
     !                                                                  !
     !(*)Right eigenvectors:  mat * UR(j) = W(j) * UR(j).               !
@@ -841,7 +862,7 @@ end subroutine utility_dgmat
 subroutine utility_inv(mat,dim,inv)!ALVARO
     !==================================================================!
     !                                                                  !
-    !!Given a general nonsingular dim x dim matrix mat, computes the   !
+    !Given a general nonsingular dim x dim matrix mat, computes the    !
     !inverse matrix inv = mat^(-1).                                    !
     !                                                                  !
     !==================================================================! 

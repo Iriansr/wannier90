@@ -262,9 +262,10 @@ module w90_parameters
   real(kind=dp), public, save :: kubo_eigval_max
 
 ! Module  f l o q u e t
-  logical, public, save :: floquet, floq_calc_st !ALVARO
+  logical, public, save :: floquet, floq_calc_st, overwrite_floquet !ALVARO
   real(kind=dp), public, save :: floquet_conv_factor, omega_floq, t0
   integer, public, save :: ntpts
+  integer, public, save :: srange
 
 ! Module  s p i n
   real(kind=dp), public, save :: spin_kmesh_spacing
@@ -1173,15 +1174,19 @@ contains
 
     floquet = .false. !ALVARO
     floq_calc_st = .false.
+    overwrite_floquet = .false.
     floquet_conv_factor = 0.01_dp
-    omega_floq = 1.0_dp
+    omega_floq = 1.0_dp !IN THE FUTURE A FULL RANGE OF OMEGAS WILL BE CONSIDERED.
     t0 = 0.0_dp
     ntpts = 100
+    srange = 10
     call param_get_keyword('floquet', found, l_value=floquet)
+    call param_get_keyword('overwrite_floquet', found, l_value=overwrite_floquet)
     call param_get_keyword('floquet_conv_factor', found, r_value=floquet_conv_factor)
     call param_get_keyword('omega_floquet', found, r_value=omega_floq)
     call param_get_keyword('t0', found, r_value=t0)
     call param_get_keyword('ntpts', found, i_value=ntpts)
+    call param_get_keyword('srange', found, i_value=srange)
 
     transl_inv = .false.
     call param_get_keyword('transl_inv', found, l_value=transl_inv)
