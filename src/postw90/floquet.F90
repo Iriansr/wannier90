@@ -19,6 +19,11 @@ module w90_floquet
 
         use w90_get_oper, only : HH_R, AA_R, get_HH_R, get_AA_R
 
+        !!!!TESTEBED.
+        use w90_utility, only : utility_exphs, utility_logh, utility_diagonalize
+        complex(kind=dp), dimension(2, 2)    :: mat, rot
+        real(kind=dp), dimension(2) :: eig
+
         complex(kind=dp), dimension(num_wann, num_wann)    :: H_F_k
         complex(kind=dp), dimension(num_wann, num_wann, 3) :: A_F_k
 
@@ -57,6 +62,29 @@ module w90_floquet
         else
 
             !!!PLACE TO TEST THINGS
+            mat = cmplx_0
+            rot = cmplx_0
+            eig = 0.0_dp
+
+            !HERMITIAN
+            mat(1,:) = (/cmplx(2.0_dp, 0.0_dp), cmplx(0.0_dp, 1.0_dp)/)
+            mat(2,:) = (/cmplx(0.0_dp, -1.0_dp), cmplx(2.0_dp, 0.0_dp)/)
+            rot = utility_exphs(mat, 2, .false.)
+            do ir = 1, 2
+                do ik = 1, 2
+                    print*, ir, ik, rot(ir, ik)
+                enddo
+            enddo
+
+            !SKEW-HERMITIAN
+            mat(1,:) = -cmplx_i*(/cmplx(2.0_dp, 0.0_dp), cmplx(0.0_dp, 1.0_dp)/)
+            mat(2,:) = -cmplx_i*(/cmplx(0.0_dp, -1.0_dp), cmplx(2.0_dp, 0.0_dp)/)
+            rot = utility_exphs(mat, 2, .true.)
+            do ir = 1, 2
+                do ik = 1, 2
+                    print*, ir, ik, rot(ir, ik)
+                enddo
+            enddo
 
         endif
 
@@ -66,7 +94,7 @@ module w90_floquet
         use w90_constants, only: dp, twopi
         real(kind=dp), intent(in) :: t, omega
         real(kind=dp), intent(out), dimension(3) :: q
-        q = 1.0_dp!0.0_dp!sin(omega*t)
+        q = 100*sin(omega*t) !EXTREME AMPLITUDES SHOW FAILED TO CONVERGE QUASIENERGY SPECTRA. IN THAT CASE IMPLEMENT h_f_K WITH i-S.
     end subroutine get_q
 
     subroutine get_berry_connection_on_gauge(kpt, H_R, A_k)
@@ -182,15 +210,15 @@ module w90_floquet
         use w90_get_oper, only : HH_R, AA_R, get_HH_R, get_AA_R
         use w90_postw90_common, only : pw90common_fourier_R_to_k_new, pw90common_fourier_R_to_k_vec
 
-        complex(kind=dp), intent(out), dimension(num_wann, num_wann, srange)   :: Qs
+        complex(kind=dp), intent(out), dimension(num_wann, num_wann, 2*srange + 1)   :: Qs
 
-        real(kind=dp)   , intent(in) , dimension(3)                            :: kpt
-        real(kind=dp)   , intent(in)                                           :: omega
+        real(kind=dp)   , intent(in) , dimension(3)                                  :: kpt
+        real(kind=dp)   , intent(in)                                                 :: omega
 
-        complex(kind=dp), dimension(num_wann, num_wann)                        :: H_F_K, TEV, AUX
-        complex(kind=dp), dimension(num_wann, num_wann, srange)                :: Pt
-        real(kind=dp)                                                          :: t
-        integer                                                                :: it, is
+        complex(kind=dp), dimension(num_wann, num_wann)                              :: H_F_K, TEV, AUX
+        complex(kind=dp), dimension(num_wann, num_wann, srange)                      :: Pt
+        real(kind=dp)                                                                :: t
+        integer                                                                      :: it, is
 
         !Initialization.
         Qs = cmplx_0
@@ -210,7 +238,7 @@ module w90_floquet
         enddo
 
         !Perform a Fourier transform to calculate the Fourier amplitudes of P(t).
-        do is = 1, srange
+        do is = -srange, srange
             do it = 1, ntpts-1
                 t = t0 + twopi*real(it-1,dp)/(omega*real(ntpts-1,dp))
                 Qs(:, :, is) = Qs(:, :, is) + Pt(:, :, it)*exp(cmplx_i*is*omega*t)
@@ -236,7 +264,7 @@ module w90_floquet
         real(kind=dp),    dimension(3)                               :: q, dq, r_ij
         real(kind=dp),    dimension(num_wann, 3)                     :: wan_centres
         complex(kind=dp), dimension(num_wann, num_wann, nrpts)       :: HH_R_t
-        integer :: i, j, ir
+        integer                                                      :: i, j, ir
 
         call get_HH_R
         call get_AA_R
