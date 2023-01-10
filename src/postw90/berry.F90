@@ -103,7 +103,8 @@ contains
       kubo_adpt_smr_max, kubo_smr_fixed_en_width, &
       scissors_shift, num_valence_bands, &
       shc_bandshift, shc_bandshift_firstband, shc_bandshift_energyshift, shc_method, &
-      kdotp_kpoint, kdotp_num_bands, kdotp_bands
+      kdotp_kpoint, kdotp_num_bands, kdotp_bands, &
+      floquet_conv_factor, ntpts, t0
     use w90_get_oper, only: get_HH_R, get_AA_R, get_BB_R, get_CC_R, &
       get_SS_R, get_SHC_R, get_SAA_R, get_SBB_R
 
@@ -123,6 +124,8 @@ contains
     ! shift current
     real(kind=dp), allocatable :: sc_k_list(:, :, :)
     real(kind=dp), allocatable :: sc_list(:, :, :)
+    ! floquet tests
+    complex(kind=dp), allocatable :: fta_k_list(:), errorf_k(:), fta_list(:), errorf(:)
     ! kdotp
     complex(kind=dp), allocatable :: kdotp(:, :, :, :, :)
     ! Complex optical conductivity, dividided into Hermitean and
@@ -247,6 +250,14 @@ contains
       sc_k_list = 0.0_dp
       sc_list = 0.0_dp
     endif
+
+    call get_HH_R
+    call get_AA_R
+    allocate (fta_k_list(kubo_nfreq), errorf_k(kubo_nfreq), fta_list(kubo_nfreq), errorf(kubo_nfreq))
+    fta_k_list = 0.0_dp
+    errorf_k = 0.0_dp
+    fta_list = 0.0_dp
+    errorf = 0.0_dp
 
     if (eval_shc) then
       call get_HH_R
@@ -463,6 +474,9 @@ contains
           sc_list = sc_list + sc_k_list*kweight
         end if
 
+        call wrapper_floquet(kpt, fta_k_list, errorf_k)
+        fta_list = fta_list + fta_k_list*kweight
+        errorf = errorf + errorf_k*kweight
         !
         ! ***END COPY OF CODE BLOCK 1***
 
@@ -595,6 +609,14 @@ contains
           sc_list = sc_list + sc_k_list*kweight
         end if
 
+        print*, kpt, "tests"
+
+        call wrapper_floquet(kpt, fta_k_list, errorf_k)
+        fta_list = fta_list + fta_k_list*kweight
+        errorf = errorf + errorf_k*kweight
+
+        print*, "tests"
+
         !
         ! ***END CODE BLOCK 1***
 
@@ -678,6 +700,9 @@ contains
     if (eval_sc) then
       call comms_reduce(sc_list(1, 1, 1), 3*6*kubo_nfreq, 'SUM')
     end if
+
+    call comms_reduce(fta_list(1), kubo_nfreq, 'SUM')
+    call comms_reduce(errorf(1), kubo_nfreq, 'SUM')
 
     if (eval_shc) then
       if (shc_freq_scan) then
@@ -1058,6 +1083,23 @@ contains
         enddo
         close (file_unit)
       endif
+
+      write (stdout, '(/,1x,a)') &
+      '----------------------------------------------------------'
+    write (stdout, '(1x,a)') &
+      'Output data files related to floquet tests:               '
+    write (stdout, '(1x,a)') &
+      '----------------------------------------------------------'
+      file_name = trim(seedname)//'-fq_'// &
+      achar(119 + 1)//achar(119 + 2)//achar(119 + 3)//'.dat'
+      file_name = trim(file_name)
+      file_unit = io_file_unit()
+      open (file_unit, FILE=file_name, STATUS='UNKNOWN', FORM='FORMATTED')
+      write (stdout, '(/,3x,a)') '* '//file_name
+      do ifreq = 1, kubo_nfreq
+        write (file_unit, '(3E18.8E3)') real(kubo_freq_list(ifreq), dp), &
+          fta_list(ifreq)
+      enddo
 
       if (eval_sc) then
         ! -----------------------------!
@@ -1854,6 +1896,30 @@ contains
     enddo ! bands
 
   end subroutine berry_get_sc_klist
+
+  subroutine wrapper_floquet(kpt, fta_k_list, errorf)
+
+    use w90_constants, only: dp, cmplx_0, cmplx_i, pi
+    use w90_parameters, only: num_wann, srange, nfermi, kubo_nfreq, kubo_freq_list, &
+    fermi_energy_list, kubo_smr_index, kubo_smr_fixed_en_width, floquet_conv_factor, ntpts, t0
+    use w90_utility, only: utility_rotate, utility_diagonalize, utility_w0gauss
+    use w90_get_oper, only: HH_R, get_HH_R
+    use w90_postw90_common, only: pw90common_fourier_R_to_k_new, pw90common_get_occ
+    use w90_wan_ham, only: wham_get_eig_deleig
+    use w90_floquet, only: floquet_get_FT_obs_A
+
+    real(kind=dp), intent(in)                        :: kpt(3)
+    complex(kind=dp), intent(out), dimension(kubo_nfreq)     :: fta_k_list, errorf
+    real(kind=dp), dimension(num_wann) :: eig
+    real(kind=dp), dimension(num_wann, 3) :: eig_da
+    complex(kind=dp), dimension(num_wann, num_wann) :: HH, UU
+    complex(kind=dp), dimension(num_wann, num_wann, 3) :: HH_da
+
+    call pw90common_fourier_R_to_k_new(kpt, HH_R, HH)
+    call wham_get_eig_deleig(kpt, eig, eig_da, HH, HH_da, UU)
+    call floquet_get_FT_obs_A(kpt, HH_da(:, :, 1), 0.0_dp, fta_k_list, errorf)
+
+  end subroutine wrapper_floquet
 
   subroutine berry_get_shc_klist(kpt, shc_k_fermi, shc_k_freq, shc_k_band)
     !====================================================================!

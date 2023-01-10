@@ -6242,6 +6242,13 @@ contains
     
     !ALVARO
     call comms_bcast(floquet, 1)
+    call comms_bcast(floq_calc_st, 1)
+    call comms_bcast(overwrite_floquet, 1)
+    call comms_bcast(floquet_conv_factor, 1)
+    call comms_bcast(omega_floq, 1)
+    call comms_bcast(t0, 1)
+    call comms_bcast(ntpts, 1)
+    call comms_bcast(srange, 1)
 
 !  Stepan Tsirkin
     call comms_bcast(gyrotropic, 1)

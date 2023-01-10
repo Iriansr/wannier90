@@ -672,6 +672,7 @@ contains
       call io_error('Error in utility_diagonalize')
     endif
     if (info > 0) then
+      print*, "utility_error:", mat
       write (stdout, '(i3,a)') info, ' EIGENVECTORS FAILED TO CONVERGE'
       call io_error('Error in utility_diagonalize')
     endif
@@ -703,10 +704,8 @@ contains
 
     if (skew) then
       !Skew-Hermitian matrix.
-
       exphs = cmplx_i*mat !Now exphs is Hermitian.
       call utility_diagonalize(exphs,dim,eig,rot)
-      exphs = cmplx_0
       do i = 1, dim
         exphs(i,i) = exp(-cmplx_i*eig(i))
       enddo
@@ -714,7 +713,6 @@ contains
 
     else
       !Hermitian matrix.
-
       call utility_diagonalize(mat,dim,eig,rot)
       do i = 1, dim
         exphs(i,i) = exp(eig(i))
@@ -729,7 +727,7 @@ contains
   function utility_logh(mat,dim) result(logu)!ALVARO
     !==================================================================!
     !                                                                  !
-    !Given an Hermitian dim x dim matrix mat, computes the Hermitian   !
+    !Given an Unitary dim x dim matrix mat, computes the Hermitian     !
     !dim x dim matrix logu such that logu = log(mat).                  !
     !                                                                  !
     !==================================================================! 
@@ -739,11 +737,11 @@ contains
     complex(kind=dp), dimension(:,:), intent(in) :: mat
     integer, intent(in) :: dim
     complex(kind=dp), dimension(dim,dim) :: logu, rot
-    real(kind=dp), dimension(dim) :: eig
+    complex(kind=dp), dimension(dim) :: eig
     integer :: i
 
     logu = 0.d0
-    call utility_diagonalize(mat,dim,eig,rot)
+    call utility_schur(mat,dim,eig,rot)
     do i = 1, dim
       logu(i,i) = log(eig(i))
     enddo
