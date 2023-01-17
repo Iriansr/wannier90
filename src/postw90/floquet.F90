@@ -78,10 +78,13 @@ module w90_floquet
                 enddo
             enddo
 
+            print*, "log of exp:", mat, utility_logh(utility_exphs(mat, 2, .false.), 2)
+
             !SKEW-HERMITIAN
-            mat(1,:) = -cmplx_i*(/cmplx(2.0_dp, 0.0_dp), cmplx(0.0_dp, 1.0_dp)/)
-            mat(2,:) = -cmplx_i*(/cmplx(0.0_dp, -1.0_dp), cmplx(2.0_dp, 0.0_dp)/)
+            mat(1,:) = cmplx_i*(/cmplx(2.0_dp, 0.0_dp), cmplx(0.0_dp, 1.0_dp)/)
+            mat(2,:) = cmplx_i*(/cmplx(0.0_dp, -1.0_dp), cmplx(2.0_dp, 0.0_dp)/)
             rot = utility_exphs(mat, 2, .true.)
+            print*, "unitary check", matmul(rot, conjg(transpose(rot)))
             do ir = 1, 2
                 do ik = 1, 2
                     print*, ir, ik, rot(ir, ik)
@@ -110,9 +113,9 @@ module w90_floquet
         !                                                       !
         !=======================================================!
 
-        use w90_constants, only: dp, cmplx_0, cmplx_i, pi
+        use w90_constants, only: dp, cmplx_0, cmplx_i, pi, twopi
         use w90_parameters, only: num_wann, srange, nfermi, kubo_nfreq, kubo_freq_list, &
-        fermi_energy_list, kubo_smr_index, kubo_smr_fixed_en_width, floquet_conv_factor, t0
+        fermi_energy_list, kubo_smr_index, kubo_smr_fixed_en_width, floquet_conv_factor, t0, ntpts
         use w90_utility, only: utility_rotate, utility_diagonalize, utility_w0gauss
         use w90_get_oper, only: HH_R, get_HH_R
         use w90_postw90_common, only: pw90common_fourier_R_to_k_new, pw90common_get_occ
@@ -128,17 +131,25 @@ module w90_floquet
         complex(kind=dp),              dimension(num_wann, num_wann)                 :: HH_k, WtoH, occ_mat_H, &
                                                                                      H_F_k, WtoF, FA, occ_mat_F
 
-        complex(kind=dp),              dimension(num_wann, num_wann, -srange:srange)   ::    Qs, FQs
+        complex(kind=dp),              dimension(:, :, :), allocatable   ::    Qs, FQs
+        complex(kind=dp),              dimension(:, :, :), allocatable   ::    Pt
 
         real(kind=dp),                 dimension(kubo_nfreq)                         :: delta, p_value
         complex(kind=dp),              dimension(kubo_nfreq)                         :: RFTA, IFTA
-        complex(kind=dp)                                                             :: f_integrand                              
+        complex(kind=dp)                                                             :: f_integrand   
+        real(kind=dp)                                                                :: t                           
 
-        integer                                                                      :: n, m, l, p, r, s, ifreq
+        integer                                                                      :: n, m, l, p, r, s, ifreq, is, it
 
-        !!! This stays here until I figure a new variable for delta function width. 
+        !!! This stays here until I figure out how to solve losing variable scope in parallel. 
         kubo_smr_fixed_en_width = 0.025_dp
+        ntpts = 100
+        srange = 10
         !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+        allocate(Pt(num_wann, num_wann, ntpts))
+        allocate(Qs(num_wann, num_wann, -srange:srange))
+        allocate(FQs(num_wann, num_wann, -srange:srange))
 
         FTA = cmplx_0
         error = cmplx_0
@@ -147,8 +158,7 @@ module w90_floquet
         FA = cmplx_0
         Qs = cmplx_0
         FQs = cmplx_0
-
-        !print*, Qs
+        H_F_k = cmplx_0
 
         !Get undriven Hamiltonian matrix at kpt and Wannier gauge.
         call pw90common_fourier_R_to_k_new(kpt, HH_R, HH_k)
@@ -163,18 +173,25 @@ module w90_floquet
         do ifreq = 1, kubo_nfreq !For each frequency:
 
             !Get the effective floquet Hamiltonian and the Wannier to Floquet gauge transformation.
-            call eff_floquet_hamil(kpt, real(kubo_freq_list(ifreq), dp), H_F_k, eig_F, WtoF)!CAREFUL: NEVER INCLUDE OMEGA=0.
+            call get_tev(kpt, real(kubo_freq_list(ifreq), dp), H_F_K, Pt)
             !Get the Qs-s on the Wannier gauge.
 
-            call get_Qs(kpt, real(kubo_freq_list(ifreq), dp), Qs)
+            do is = -srange, srange
+                do it = 1, ntpts-1
+                    t = t0 + twopi*real(it-1,dp)/(real(kubo_freq_list(ifreq), dp)*real(ntpts-1,dp))
+                    !print*, it, t, ntpts, Pt(1, 1, it), Qs(1, 1, is)
+                    Qs(:, :, is) = Qs(:, :, is) + Pt(:, :, it)*exp(cmplx_i*is*real(kubo_freq_list(ifreq), dp)*t)/real(ntpts-1,dp)
+                enddo
+            !TODO: CHECK IF QS NEEDS TO BE NORMALIZED.
+            enddo
+
+            call utility_diagonalize(H_F_k, num_wann, eig_F, WtoF)
 
             !Rotate all quantities to Floquet gauge.
             FA = utility_rotate(A, WtoF, num_wann)
             occ_mat_F = utility_rotate(occ_mat_H, WtoF, num_wann)
             do s = -srange, srange
-                !Qs(:,:,s) = 0.0_dp ! This array needs this type of initialization simewhere in the sub.
                 FQs(:, :, s) = utility_rotate(Qs(:, :, s), WtoF, num_wann)
-                !print*, FQs(:, :, s)
             enddo
 
             do r = -srange, srange
@@ -273,10 +290,9 @@ module w90_floquet
         !                                                       !
         !Subroutine to obtain the effective Floquet hamiltonian !
         !H_F_k on the k-point kpt and the Wannier gauge.        !
-        !Optionally returns the quasienergy spectra, which is   !
-        !calculated using convergence prescription if           !
-        !pres = .true., and the unitary matrix that transforms  !
-        !from Wannier to Floquet gauge.                         !
+        !Optionally returns the quasienergy spectra and the     !
+        !unitary matrix that transforms from Wannier to Floquet !
+        !gauge.                                                 !
         !                                                       !
         !=======================================================!
 
@@ -313,113 +329,98 @@ module w90_floquet
             call tdep_hamiltonian(kpt, t, omega, HH_k_t)
             !Get time evolution operator U(t, t + delta t) using convergence prescription,
             !this is equivalent to perform a Suzuki–Trotter expansion.
-            if (HH_k_t(1,1)/=HH_k_t(1,1)) then
-                print*, "here1"
-                stop
-            endif
             HH_k_t = utility_exphs(floquet_conv_factor*HH_k_t/real(ntpts-1,dp),num_wann, .false.)
             !Accumulate for all time slices.
             H_F_k = matmul(H_F_k, HH_k_t)
         enddo
 
         !Take log with numerical convergence prescription.
-        if (H_F_k(1,1)/=H_F_k(1,1)) then
-            print*, "here2"
-            stop
-        endif
         H_F_k = utility_logh(H_F_k,num_wann)/floquet_conv_factor
 
         !Get the quasienergy spectra eig_F and the unitary matrix that 
         !transforms from Wannier gauge to Floquet gauge.
         if (present(UU_F_k).AND.present(eig_F)) then
-            if (H_F_k(1,1)/=H_F_k(1,1)) then
-                print*, "here3"
-                stop
-            endif
             call utility_diagonalize(H_F_k, num_wann, eig_F, UU_F_k)
         endif
 
     end subroutine eff_floquet_hamil
 
-    subroutine get_Qs(kpt, omega, Qs)
+    subroutine get_tev(kpt, omega, H_F_K, Pt)
 
-        !=======================================================!
-        !                                                       !
-        !Subroutine to obtain the Fourier amplitudes of the     !
-        !operator P(t), Qs, on the k-point kpt and the Wannier  !
-        !gauge.                                                 !                                  
-        !                                                       !
-        !=======================================================!
+        !========================================================!
+        !                                                        !
+        !Subroutine to decompose the time-evolution operator     !
+        !into the Floquet form                                   !
+        !TEV = \sum_{s} Qs exp(-i*s*\omega*t) exp(-i*H_F*t/\hbar)!
+        !on the k-point kpt and the Wannier gauge.               !                                  
+        !                                                        !
+        !========================================================!
 
         use w90_constants, only: dp, cmplx_0, cmplx_i, twopi
         use w90_parameters, only : num_wann, srange, ntpts, t0
         use w90_utility, only : utility_exphs, utility_logh, utility_diagonalize
-        use w90_get_oper, only : HH_R, AA_R, get_HH_R, get_AA_R
-        use w90_postw90_common, only : pw90common_fourier_R_to_k_new, pw90common_fourier_R_to_k_vec
 
-        complex(kind=dp), intent(out), dimension(num_wann, num_wann, -srange:srange)   :: Qs
+        complex(kind=dp), intent(inout), dimension(:, :)                   :: H_F_K
+        complex(kind=dp), intent(inout), dimension(:, :, :)  :: Pt
 
-        real(kind=dp)   , intent(in) , dimension(3)                                  :: kpt
-        real(kind=dp)   , intent(in)                                                 :: omega
+        real(kind=dp)   , intent(in) , dimension(3)                                    :: kpt
+        real(kind=dp)   , intent(in)                                                   :: omega
 
-        complex(kind=dp), dimension(num_wann, num_wann)                              :: H_F_K, TEV, AUX
-        complex(kind=dp), dimension(num_wann, num_wann, ntpts - 1)                   :: Pt
-        real(kind=dp)                                                                :: t
-        integer                                                                      :: it, is
+        complex(kind=dp), dimension(:, :, :), allocatable                        :: TEV
+        complex(kind=dp), dimension(:, :), allocatable                                :: AUX
+        real(kind=dp)                                                                  :: t, dt
+        integer                                                                        :: it, is, k
+
+        !NEED TO BE TRIED IN PARALLEL.
+        !DUE TO THE BELOW: PASS NTPTS, SRANGE... AS INPUT PARAMETERS RATHER THAN SAVE FROM PARAMETERS.F90
+
+        ntpts = 100
+        srange = 10
+        t0 = 0.00_dp
+
+        allocate(TEV(num_wann, num_wann, ntpts))
+        allocate(AUX(num_wann, num_wann))
 
         !Initialization.
-        Qs = cmplx_0
+        H_F_K = cmplx_0 !!!
+        !Qs = cmplx_0
         Pt = cmplx_0
-        H_F_K = cmplx_0
+        TEV   = cmplx_0 
+        do k = 1, num_wann
+            TEV(k, k, :) = cmplx(1.0_dp, 0.0_dp)
+        enddo  
         AUX   = cmplx_0
-        TEV   = cmplx_0
 
-        do it = 1, num_wann
-            TEV(it, it) = cmplx(1.0_dp, 0.0_dp)
-        enddo
+        do k = 1, ntpts
 
-        call eff_floquet_hamil(kpt, omega, H_F_k)
+            t = t0 + twopi*real(k-1,dp)/(omega*real(ntpts-1,dp))
+            !Get time evolution operator U(t0, t).
 
-        do it = 1, ntpts-1
-            t = t0 + twopi*real(it-1,dp)/(omega*real(ntpts-1,dp))
-            !Get time evolution operator U(t0, t0 + it* delta t).
-            call tdep_hamiltonian(kpt, t, omega, AUX)
-            if (AUX(1,1)/=AUX(1,1)) then
-                print*, "here4"
-                stop
-            endif
-            AUX = utility_exphs(cmplx_i*twopi*AUX/(omega*real(ntpts-1,dp)),num_wann, .true.)
-            !Accumulate for all time slices.
-            TEV = matmul(TEV, AUX)
-            !Calcualte P(t) for each time slice.
-            if (H_F_k(1,1)/=H_F_k(1,1)) then
-                print*, "here5"
-                stop
-            endif
-            AUX = TEV*utility_exphs(cmplx_i*t*H_F_K,num_wann, .true.)
-            Pt(:, :, it) = AUX
-        enddo
+            do it = 1, ntpts
 
-        !CAREFUL WITH OVERFLOW: IF PT HAS REALLY LARGE ENTRIES SIGSEGV IS ISSUED. THIS IS BECAUSE THE FIELD AMPLITUDES MAY BE TOO BIG.
+                dt = (t-t0)/(real(ntpts-1,dp))
+                call tdep_hamiltonian(kpt, t0 + real(it-1, dp)*dt, omega, AUX)
+                AUX = utility_exphs(-cmplx_i*dt*AUX,num_wann, .true.)
+                TEV(:, :, k) = matmul(TEV(:, :, k), AUX)
 
-        !Perform a Fourier transform to calculate the Fourier amplitudes of P(t).
-        do is = -srange, srange
-            do it = 1, ntpts-1
-                t = t0 + twopi*real(it-1,dp)/(omega*real(ntpts-1,dp))
-                Qs(:, :, is) = Qs(:, :, is) + Pt(:, :, it)*exp(cmplx_i*is*omega*t)/real(ntpts-1,dp)!*twopi/&
-                !(omega*real(ntpts-1,dp))
             enddo
-            !Qs(:, :, is) = omega*Qs(:, :, is)/twopi !Divide by period.
         enddo
 
-    end subroutine get_Qs
+        H_F_k = (cmplx_i*omega*utility_logh(TEV(:, :, ntpts),num_wann)/twopi)
+
+        do it = 1, ntpts
+            t = t0 + twopi*real(it-1,dp)/(omega*real(ntpts-1,dp))
+            Pt(:, :, it) = matmul(TEV(:, :, it),utility_exphs(cmplx_i*H_F_k*t, num_wann, .true.))
+        enddo
+
+    end subroutine get_tev
 
     subroutine tdep_hamiltonian(kpt, t, omega, HH_k_t)
 
         !Get the time-dependent Hamiltonian H(t) = H + q(t)*r on the Wannier gauge.
 
         use w90_constants, only : dp, cmplx_0, cmplx_i
-        use w90_postw90_common, only : nrpts, rpt_origin, irvec, pw90common_fourier_R_to_k_new
+        use w90_postw90_common, only : nrpts, pw90common_fourier_R_to_k_new
         use w90_parameters, only : num_wann
         use w90_get_oper, only : HH_R, AA_R, get_HH_R, get_AA_R
 
@@ -427,10 +428,11 @@ module w90_floquet
         real(kind=dp),    intent(in),  dimension(3)                  :: kpt
         complex(kind=dp), intent(out), dimension(num_wann, num_wann) :: HH_k_t
 
-        real(kind=dp),    dimension(3)                               :: q, dq, r_ij
-        real(kind=dp),    dimension(num_wann, 3)                     :: wan_centres
+        real(kind=dp),    dimension(3)                               :: q
         complex(kind=dp), dimension(num_wann, num_wann, nrpts)       :: HH_R_t
         integer                                                      :: i, j, ir
+
+        HH_k_t = cmplx_0
 
         call get_HH_R
         call get_AA_R
@@ -446,7 +448,6 @@ module w90_floquet
         enddo
 
         call pw90common_fourier_R_to_k_new(kpt, HH_R_t, HH_k_t)
-        !!!!TODO: MAKE SURE THAT THE INTRABAND CONTRIBUTIONS ARE TAKEN OUT OF HH_K_T.
 
     end subroutine tdep_hamiltonian
 

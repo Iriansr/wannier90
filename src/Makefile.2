@@ -135,7 +135,7 @@ get_oper.o: $(POSTDIR)get_oper.F90 parameters.o constants.o comms.o postw90_comm
 
 #ALVARO
 floquet.o: $(POSTDIR)floquet.F90 comms.o parameters.o constants.o utility.o postw90_common.o get_oper.o io.o wan_ham.o
-	$(COMPILER) $(POSTOPTS) $(FCOPTS) -c $(POSTDIR)floquet.F90
+	$(COMPILER) $(POSTOPTS) $(FCOPTS) -c -traceback -g $(POSTDIR)floquet.F90
 
 spin.o: $(POSTDIR)spin.F90 comms.o parameters.o constants.o utility.o postw90_common.o get_oper.o io.o wan_ham.o floquet.o
 	 $(COMPILER) $(POSTOPTS) $(FCOPTS) -c $(POSTDIR)spin.F90

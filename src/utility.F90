@@ -706,10 +706,11 @@ contains
       !Skew-Hermitian matrix.
       exphs = cmplx_i*mat !Now exphs is Hermitian.
       call utility_diagonalize(exphs,dim,eig,rot)
+      exphs = cmplx_0
       do i = 1, dim
         exphs(i,i) = exp(-cmplx_i*eig(i))
       enddo
-      exphs = matmul(matmul(rot,exphs),conjg(transpose(rot))) 
+      exphs = matmul(matmul(rot, exphs), conjg(transpose(rot)))
 
     else
       !Hermitian matrix.
