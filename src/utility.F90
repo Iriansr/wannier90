@@ -34,7 +34,7 @@ module w90_utility
   public :: utility_diagonalize
   public :: utility_schur
   public :: utility_exphs
-  public :: utility_logh
+  public :: utility_logu
   public :: utility_frac_to_cart
   public :: utility_im_tr
   public :: utility_im_tr_prod
@@ -799,7 +799,7 @@ contains
   end function utility_exphs
 
   !===========================================================!
-  function utility_logh(mat, dim, error, comm) result(logu)!ALVARO
+  function utility_logu(mat, dim, error, comm) result(logu)!ALVARO
     !==================================================================!
     !                                                                  !
     !Given an Unitary dim x dim matrix mat, computes the Skew-Hermitian!
@@ -830,7 +830,7 @@ contains
 
     logu = matmul(matmul(rot, logu),conjg(transpose(rot))) 
 
-  end function utility_logh
+  end function utility_logu
 
   !================================================!
   function utility_rotate(mat, rot, dim)

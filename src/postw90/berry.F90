@@ -687,6 +687,17 @@ contains
           sc_list = sc_list + sc_k_list*kweight
         end if
 
+        if (eval_floq) then
+          call berry_get_AV_current(pw90_berry, dis_manifold, fermi_energy_list, kpt_latt, &
+                                    ws_region, print_output, pw90_band_deriv_degen, wannier_data, &
+                                    ws_distance, wigner_seitz, AA_R, HH_R, u_matrix, v_matrix, eigval, &
+                                    kpt, real_lattice, floq_k_list, mp_grid, scissors_shift, num_bands, &
+                                    num_kpts, num_wann, num_valence_bands, effective_model, &
+                                    have_disentangled, seedname, stdout, timer, error, comm)
+          if (allocated(error)) return
+          floq_list = floq_list + floq_k_list*kweight
+        end if
+
         ! ***END COPY OF CODE BLOCK 1***
 
         if (eval_shc) then
@@ -893,6 +904,17 @@ contains
           if (allocated(error)) return
 
           sc_list = sc_list + sc_k_list*kweight
+        end if
+
+        if (eval_floq) then
+          call berry_get_AV_current(pw90_berry, dis_manifold, fermi_energy_list, kpt_latt, &
+                                    ws_region, print_output, pw90_band_deriv_degen, wannier_data, &
+                                    ws_distance, wigner_seitz, AA_R, HH_R, u_matrix, v_matrix, eigval, &
+                                    kpt, real_lattice, floq_k_list, mp_grid, scissors_shift, num_bands, &
+                                    num_kpts, num_wann, num_valence_bands, effective_model, &
+                                    have_disentangled, seedname, stdout, timer, error, comm)
+          if (allocated(error)) return
+          floq_list = floq_list + floq_k_list*kweight
         end if
 
         ! ***END CODE BLOCK 1***
@@ -2933,6 +2955,113 @@ contains
     end subroutine berry_get_js_k
 
   end subroutine berry_get_shc_klist
+
+  subroutine berry_get_AV_current(pw90_berry, dis_manifold, fermi_energy_list, kpt_latt, &
+    ws_region, print_output, pw90_band_deriv_degen, wannier_data, &
+    ws_distance, wigner_seitz, AA_R, HH_R, u_matrix, v_matrix, eigval, &
+    kpt, real_lattice, floq_k_list, mp_grid, scissors_shift, num_bands, &
+    num_kpts, num_wann, num_valence_bands, effective_model, &
+    have_disentangled, seedname, stdout, timer, error, comm)
+
+    use w90_constants,      only: dp, cmplx_0, cmplx_i
+    use w90_utility,        only: utility_diagonalize, utility_rotate, &
+                                  utility_exphs, utility_logu
+    use w90_postw90_common, only: pw90common_fourier_R_to_k_new_second_d, &
+                                  pw90common_fourier_R_to_k_vec_dadb, &
+                                  pw90common_get_occ
+    use w90_wan_ham,        only: wham_get_eig_deleig, &
+                                  wham_get_D_h_P_value
+    use w90_comms,          only: w90comm_type
+    use w90_types,          only: print_output_type, wannier_data_type, &
+                                  dis_manifold_type, kmesh_info_type, &
+                                  ws_region_type, ws_distance_type, timer_list_type
+    use w90_postw90_types,  only: pw90_berry_mod_type, pw90_band_deriv_degen_type, &
+                                  wigner_seitz_type
+
+    implicit none
+    ! Arguments
+    !
+    type(pw90_berry_mod_type),         intent(in)    :: pw90_berry
+    type(dis_manifold_type),           intent(in)    :: dis_manifold
+    type(pw90_band_deriv_degen_type),  intent(in)    :: pw90_band_deriv_degen
+    type(print_output_type),           intent(in)    :: print_output
+    type(ws_region_type),              intent(in)    :: ws_region
+    type(w90comm_type),                intent(in)    :: comm
+    type(wannier_data_type),           intent(in)    :: wannier_data
+    type(wigner_seitz_type),           intent(inout) :: wigner_seitz
+    type(ws_distance_type),            intent(inout) :: ws_distance
+    type(timer_list_type),             intent(inout) :: timer
+    type(w90_error_type), allocatable, intent(out)   :: error
+
+    integer, intent(in) :: num_wann, num_bands, num_kpts, &
+                           num_valence_bands, stdout, mp_grid(3)
+    
+    character(len=50),             intent(in)    :: seedname
+    logical,                       intent(in)    :: have_disentangled, effective_model
+    real(kind=dp),                 intent(in)    :: kpt(3), real_lattice(3, 3), &
+                                                    scissors_shift, eigval(:, :), &
+                                                    kpt_latt(:, :)
+    real(kind=dp),    allocatable, intent(in)    :: fermi_energy_list(:)
+    complex(kind=dp),              intent(out)   :: floq_k_list(:, :, :)
+    complex(kind=dp),              intent(in)    :: u_matrix(:, :, :), v_matrix(:, :, :)
+    complex(kind=dp), allocatable, intent(inout) :: AA_R(:, :, :, :) ! <0n|r|Rm>
+    complex(kind=dp), allocatable, intent(inout) :: HH_R(:, :, :) !  <0n|r|Rm>
+    
+    !LOCALS
+    complex(kind=dp), allocatable :: UU(:, :), AA(:, :, :), &
+                                     r_pos(:,:,:), HH(:, :), &
+                                     HH_da(:, :, :), D_h(:,:,:)
+    real(kind=dp),    allocatable :: eig(:), eig_da(:, :), &
+                                     occ(:)
+    integer                       :: i
+
+    floq_k_list = cmplx_0
+
+    allocate (UU(num_wann, num_wann))
+    allocate (AA(num_wann, num_wann, 3))
+    allocate (r_pos(num_wann, num_wann, 3))
+    allocate (HH_da(num_wann, num_wann, 3))
+    allocate (HH(num_wann, num_wann))
+    allocate (D_h(num_wann, num_wann, 3))
+    allocate (eig(num_wann))
+    allocate (eig_da(num_wann, 3))
+    allocate (occ(num_wann))
+
+    !Get Hamiltonian matrix, eigenvalues, and the derivatives of the eigenvalues
+    !in the Hamiltonian basis. Also D_h and UU.
+
+    call pw90common_fourier_R_to_k_new_second_d(kpt, HH_R, num_wann, ws_region, wannier_data, &
+                                                real_lattice, mp_grid, ws_distance, &
+                                                wigner_seitz, error, comm, &
+                                                OO=HH, &
+                                                OO_da=HH_da(:, :, :))
+    if (allocated(error)) return
+
+    call wham_get_eig_deleig(dis_manifold, kpt_latt, pw90_band_deriv_degen, ws_region, &
+    print_output, wannier_data, ws_distance, wigner_seitz, HH_da, HH, &
+    HH_R, u_matrix, UU, v_matrix, eig_da, eig, eigval, kpt, &
+    real_lattice, scissors_shift, mp_grid, num_bands, num_kpts, &
+    num_wann, num_valence_bands, effective_model, have_disentangled, &
+    seedname, stdout, timer, error, comm)
+    if (allocated(error)) return
+
+    call wham_get_D_h_P_value(pw90_berry, HH_da, D_h, UU, eig, num_wann)
+
+    !Get Berry connection AA.
+    call pw90common_fourier_R_to_k_vec_dadb(ws_region, wannier_data, ws_distance, &
+                                                wigner_seitz, AA_R, kpt, real_lattice, mp_grid, &
+                                                num_wann, error, comm, OO_da=AA)
+    if (allocated(error)) return
+    !Obtain the position operator matrix elements in the Hamiltonian basis. 
+    !See Eq. (25) WYSV06.
+    do i = 1, 3
+      r_pos(:, :, i) = utility_rotate(AA(:, :, i), UU, num_wann) + cmplx_i*D_h(:,:,i)
+    enddo
+
+    !Get electronic occupations
+    call pw90common_get_occ(fermi_energy_list(1), eig, occ, num_wann)
+
+  end subroutine berry_get_AV_current
 
   !================================================!
   subroutine berry_print_progress(end_k, loop_k, start_k, step_k, stdout)
