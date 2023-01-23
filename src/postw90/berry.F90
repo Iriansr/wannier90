@@ -179,6 +179,9 @@ contains
     real(kind=dp), allocatable :: sc_list(:, :, :)
     ! kdotp
     complex(kind=dp), allocatable :: kdotp(:, :, :, :, :)
+    ! optical current
+    complex(kind=dp), allocatable :: floq_k_list(:, :, :)
+    complex(kind=dp), allocatable :: floq_list(:, :, :)
     ! Complex optical conductivity, dividided into Hermitean and
     ! anti-Hermitean parts
     !
@@ -210,12 +213,12 @@ contains
     real(kind=dp) :: kweight, kweight_adpt, kpt(3), db1, db2, db3, fac, rdum, vdum(3)
 
     integer :: n, i, j, k, jk, ikpt, if, ierr, loop_x, loop_y, loop_z, kdotp_nbands
-    integer :: loop_xyz, loop_adpt, adpt_counter_list(fermi_n), ifreq, file_unit
+    integer :: loop_xyz, loop_adpt, adpt_counter_list(fermi_n), ifreq, itime, file_unit
     integer :: my_node_id, num_nodes
 
     character(len=120) :: file_name
 
-    logical :: eval_ahc, eval_morb, eval_kubo, not_scannable, eval_sc, eval_shc, eval_kdotp
+    logical :: eval_ahc, eval_morb, eval_kubo, not_scannable, eval_sc, eval_shc, eval_kdotp, eval_floq
     logical :: ladpt_kmesh
     logical :: ladpt(fermi_n)
 
@@ -249,6 +252,7 @@ contains
     eval_sc = .false.
     eval_shc = .false.
     eval_kdotp = .false.
+    eval_floq = .false.
 
     if (index(pw90_berry%task, 'ahc') > 0) eval_ahc = .true.
     if (index(pw90_berry%task, 'morb') > 0) eval_morb = .true.
@@ -256,6 +260,7 @@ contains
     if (index(pw90_berry%task, 'sc') > 0) eval_sc = .true.
     if (index(pw90_berry%task, 'shc') > 0) eval_shc = .true.
     if (index(pw90_berry%task, 'kdotp') > 0) eval_kdotp = .true.
+    if (index(pw90_berry%task, 'floq') > 0) eval_floq = .true.
 
     ! Wannier matrix elements, allocations and initializations
     !
@@ -428,6 +433,23 @@ contains
       kdotp = cmplx_0
     endif
 
+    if (eval_floq) then
+      call get_HH_R(dis_manifold, kpt_latt, print_output, wigner_seitz, HH_R, u_matrix, v_matrix, &
+                    eigval, real_lattice, scissors_shift, num_bands, num_kpts, num_wann, &
+                    num_valence_bands, effective_model, have_disentangled, seedname, stdout, &
+                    timer, error, comm)
+      if (allocated(error)) return
+      call get_AA_R(pw90_berry, dis_manifold, kmesh_info, kpt_latt, print_output, AA_R, HH_R, &
+                    v_matrix, eigval, wigner_seitz%irvec, wigner_seitz%nrpts, num_bands, num_kpts, &
+                    num_wann, effective_model, have_disentangled, seedname, stdout, timer, error, &
+                    comm)
+      if (allocated(error)) return
+      allocate (floq_k_list(3, pw90_berry%floq_ntime, pw90_berry%kubo_nfreq))
+      allocate (floq_list(3, pw90_berry%floq_ntime, pw90_berry%kubo_nfreq))
+      floq_k_list = cmplx_0
+      floq_list = cmplx_0
+    endif
+
     if (print_output%iprint > 0) then
 
       write (stdout, '(/,/,1x,a)') &
@@ -479,6 +501,9 @@ contains
         write (stdout, '(/,1x,a)') 'Using a translationally-invariant discretization for the'
         write (stdout, '(1x,a)') 'band-diagonal Wannier matrix elements of r, etc.'
       endif
+
+      if (eval_floq) write (stdout, '(/,3x,a)') &
+      '* Optical Current'
 
       if (print_output%timing_level > 1) then
         call io_stopwatch_stop('berry: prelims', timer)
@@ -991,6 +1016,11 @@ contains
 
     if (eval_sc) then
       call comms_reduce(sc_list(1, 1, 1), 3*6*pw90_berry%kubo_nfreq, 'SUM', error, comm)
+      if (allocated(error)) return
+    end if
+
+    if (eval_floq) then
+      call comms_reduce(floq_list(1, 1, 1), 3*pw90_berry%floq_ntime*pw90_berry%kubo_nfreq, 'SUM', error, comm)
       if (allocated(error)) return
     end if
 
@@ -1547,6 +1577,35 @@ contains
       end if
 
     end if !print_output%iprint >0, aka "on_root"
+
+    if (eval_floq) then
+        ! -----------------------------!
+        ! Optical Current
+        ! -----------------------------!
+      write (stdout, '(/,1x,a)') &
+      '----------------------------------------------------------'
+      write (stdout, '(1x,a)') &
+      'Output data files related to optical current:             '
+      write (stdout, '(1x,a)') &
+      '----------------------------------------------------------'
+      do i = 1, 3
+        file_name = trim(seedname)//'-curr_'// &
+                    achar(119 + i)//'.dat'
+        file_name = trim(file_name)
+        file_unit = io_file_unit()
+        write (stdout, '(/,3x,a)') '* '//file_name
+        open (file_unit, FILE=file_name, STATUS='UNKNOWN', FORM='FORMATTED')
+        do itime = 1, pw90_berry%floq_ntime
+          do ifreq = 1, pw90_berry%kubo_nfreq
+            write (file_unit, '(4E18.8E3)') real(pw90_berry%floq_time_list(itime), dp), &
+                                            real(pw90_berry%kubo_freq_list(ifreq), dp), &
+                                            real(floq_list(i, itime, ifreq), dp), aimag(floq_list(i, itime, ifreq))
+          enddo
+          write (file_unit, *) ''
+        enddo
+        close (file_unit)
+      enddo
+    endif
 
   end subroutine berry_main
 

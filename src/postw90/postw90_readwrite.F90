@@ -731,7 +731,8 @@ contains
     if (pw90_calculation%berry .and. index(pw90_berry%task, 'ahc') == 0 &
         .and. index(pw90_berry%task, 'morb') == 0 &
         .and. index(pw90_berry%task, 'kubo') == 0 .and. index(pw90_berry%task, 'sc') == 0 &
-        .and. index(pw90_berry%task, 'shc') == 0 .and. index(pw90_berry%task, 'kdotp') == 0) then
+        .and. index(pw90_berry%task, 'shc' ) == 0 .and. index(pw90_berry%task, 'kdotp') == 0 &
+        .and. index(pw90_berry%task, 'floq') == 0) then
 
       call set_error_input(error, 'Error: value of berry_task not recognised in w90_wannier90_readwrite_read', comm)
       return
@@ -1568,6 +1569,43 @@ contains
                                               pw90_extra_io%kubo_freq_min)/(pw90_berry%kubo_nfreq - 1)
     enddo
 
+    pw90_berry%floq_time_min = 0.0_dp
+    call w90_readwrite_get_keyword('floq_time_min', found, error, comm, &
+                                    r_value=pw90_berry%floq_time_min)
+    if (allocated(error)) return
+    
+    pw90_berry%floq_time_max = 1.0E-12_dp
+    call w90_readwrite_get_keyword('floq_time_max', found, error, comm, &
+                                    r_value=pw90_berry%floq_time_max)
+    if (allocated(error)) return
+
+    pw90_berry%floq_time_step = 1.0E-14_dp
+    call w90_readwrite_get_keyword('floq_time_step', found, error, comm, &
+                                   r_value=pw90_berry%floq_time_step)
+    if (allocated(error)) return
+    if (found .and. pw90_berry%floq_time_step < 0.0_dp) then
+      call set_error_input(error, 'Error: floq_time_step must be positive', comm)
+      return
+    endif
+
+    pw90_berry%floq_ntime = nint((pw90_berry%floq_time_max - pw90_berry%floq_time_min) &
+    /pw90_berry%floq_time_step) + 1
+    if (pw90_berry%floq_ntime <= 1) pw90_berry%floq_ntime = 2
+    pw90_berry%floq_time_step = (pw90_berry%floq_time_max - pw90_berry%floq_time_min) &
+      /(pw90_berry%floq_ntime - 1)
+
+    if (allocated(pw90_berry%floq_time_list)) deallocate (pw90_berry%floq_time_list)
+    allocate (pw90_berry%floq_time_list(pw90_berry%floq_ntime), stat=ierr)
+    if (ierr /= 0) then
+      call set_error_alloc(error, 'Error allocating floq_time_list in w90_wannier90_readwrite_read', comm)
+      return
+    endif
+    do i = 1, pw90_berry%floq_ntime
+      pw90_berry%floq_time_list(i) = pw90_berry%floq_time_min + &
+                                     (i - 1)*(pw90_berry%floq_time_max - &
+                                     pw90_berry%floq_time_min)/(pw90_berry%floq_ntime - 1)
+    enddo
+
     ! TODO: Alternatively, read list of (complex) frequencies; kubo_nfreq is
     !       the length of the list
 
@@ -2180,6 +2218,11 @@ contains
         write (stdout, '(1x,a46,10x,a8,13x,a1)') '|  Compute Spin Hall Conductivity            :', '       T', '|'
       else
         write (stdout, '(1x,a46,10x,a8,13x,a1)') '|  Compute Spin Hall Conductivity            :', '       F', '|'
+      endif
+      if (index(pw90_berry%task, 'floq') > 0) then
+        write (stdout, '(1x,a46,10x,a8,13x,a1)') '|  Compute Optical Current (Floquet Basis)   :', '       T', '|'
+      else
+        write (stdout, '(1x,a46,10x,a8,13x,a1)') '|  Compute Optical Current (Floquet Basis)   :', '       F', '|'
       endif
       write (stdout, '(1x,a46,10x,f8.3,13x,a1)') '|  Lower frequency for optical responses     :', &
         pw90_extra_io%kubo_freq_min, '|'
