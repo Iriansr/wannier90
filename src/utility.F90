@@ -32,6 +32,9 @@ module w90_utility
   public :: utility_compar
   public :: utility_det3
   public :: utility_diagonalize
+  public :: utility_schur
+  public :: utility_exphs
+  public :: utility_logh
   public :: utility_frac_to_cart
   public :: utility_im_tr
   public :: utility_im_tr_prod
@@ -675,6 +678,159 @@ contains
     endif
 
   end subroutine utility_diagonalize
+
+    !===========================================================!
+  subroutine utility_schur(dim, mat, T, Z, error, comm, S)
+    !==================================================================!
+    !                                                                  !
+    !!Given a dim x dim matrix mat, computes its Schur decomposition   !
+    !mat = Z*S*Z^dagger.                                               !
+    !!Note that the Schur decomposition of unitary matrices always     !
+    !involves a diagonal Schur form S, S_nm = delta_nm T_n.            !
+    !                                                                  !
+    !==================================================================!
+
+    use w90_error, only: w90_error_type, set_error_fatal
+
+    integer,              intent(in)               :: dim
+    complex*16,           intent(in)               :: mat(dim,dim)
+    complex*16,           intent(out)              :: T(dim)     !Eigenvalues (diagonal elements of B).
+    complex*16,           intent(out)              :: Z(dim,dim) !Eigenvectors.
+    complex*16, optional, intent(out)              :: S(dim,dim) !Schur Form.
+    type(w90_error_type), intent(out), allocatable :: error
+    type(w90comm_type),   intent(in)               :: comm
+
+    complex*16                                     :: B(dim,dim)
+    complex*16,                        allocatable :: work(:)
+    real(8)                                        :: rwork(dim)
+    integer                                        :: info, lwork, sdim
+    logical                                        :: bwork(dim), select
+    character(len=120)                             :: errormsg
+
+    !Initialization.
+    B = mat
+
+    !Query optimal workspace.
+    lwork= -1
+    allocate(work(1))
+    call zgees('V','N',select,dim,B,dim,sdim,T,Z,dim,work,lwork,rwork,bwork,info)
+    lwork = nint(real(work(1),8))
+    deallocate(work)
+
+    !Calculation.
+    allocate(work(lwork))
+    call zgees('V','N',select,dim,B,dim,sdim,T,Z,dim,work,lwork,rwork,bwork,info)
+
+    if (present(S)) S = B
+
+    deallocate(work)
+
+    !Check convergence.
+    if (info < 0) then
+      write (errormsg, '(a,i3,a)') 'Error in utility_schur: THE ', -info, &
+        ' ARGUMENT OF ZGEES HAD AN ILLEGAL VALUE'
+      call set_error_fatal(error, errormsg, comm)
+      return
+    endif
+    if (info > 0) then
+      write (errormsg, '(i3,a)') 'Error in utility_schur: ', info, &
+        ' EIGENVECTORS FAILED TO CONVERGE'
+      call set_error_fatal(error, errormsg, comm)
+      return
+    endif
+
+  end subroutine utility_schur
+
+  !================================================!
+  function utility_exphs(mat, dim, skew, error, comm) result(exphs)!ALVARO
+    !==================================================================!
+    !                                                                  !
+    !Given a Hermitian/Skew-Hermitian dim x dim matrix mat, the routine!
+    !computes the dim x dim matrix exphs such that exphs = exp(mat).   !
+    !If mat is Skew-Hermitian, then skew = .true. and if Hermitian,    !
+    !then, , then skew = .false..                                      !
+    !                                                                  !
+    !==================================================================!
+
+    use w90_constants, only: dp, cmplx_0, cmplx_i
+    use w90_error,     only: w90_error_type
+
+    integer,              intent(in)               :: dim
+    complex(kind=dp),     intent(in)               :: mat(dim, dim)
+    logical,              intent(in)               :: skew
+    type(w90_error_type), intent(out), allocatable :: error
+    type(w90comm_type),   intent(in)               :: comm
+
+    complex(kind=dp)                               :: exphs(dim, dim), &
+                                                      rot(dim, dim)
+    real(kind=dp)                                  :: eig(dim)
+    integer                                        :: i
+
+    exphs = cmplx_0
+
+    if (skew) then
+      !Skew-Hermitian matrix.
+      exphs = cmplx_i*mat !Now exphs is Hermitian.
+
+      call utility_diagonalize(exphs, dim, eig, rot, error, comm)
+      if (allocated(error)) return
+      exphs = cmplx_0
+
+      do i = 1, dim
+        exphs(i,i) = exp(-cmplx_i*eig(i))
+      enddo
+
+      exphs = matmul(matmul(rot, exphs), conjg(transpose(rot)))
+
+    else
+      !Hermitian matrix.
+
+      call utility_diagonalize(mat, dim, eig, rot, error, comm)
+      if (allocated(error)) return
+
+      do i = 1, dim
+        exphs(i,i) = exp(eig(i))
+      enddo
+
+      exphs = matmul(matmul(rot, exphs),conjg(transpose(rot))) 
+
+    endif
+
+  end function utility_exphs
+
+  !===========================================================!
+  function utility_logh(mat, dim, error, comm) result(logu)!ALVARO
+    !==================================================================!
+    !                                                                  !
+    !Given an Unitary dim x dim matrix mat, computes the Skew-Hermitian!
+    !dim x dim matrix logu such that logu = log(mat).                  !
+    !                                                                  !
+    !==================================================================! 
+
+    use w90_constants, only: dp, cmplx_0, cmplx_i
+    use w90_error,     only: w90_error_type
+
+    integer,              intent(in)               :: dim
+    complex(kind=dp),     intent(in)               :: mat(dim, dim)
+    type(w90_error_type), intent(out), allocatable :: error
+    type(w90comm_type),   intent(in)               :: comm
+
+    complex(kind=dp)                               :: logu(dim,dim), &
+                                                      rot(dim,dim), eig(dim)
+    integer                                        :: i
+
+    logu = 0.d0
+
+    call utility_schur(dim, mat, eig, rot, error, comm)
+    if (allocated(error)) return
+
+    do i = 1, dim
+      logu(i,i) = log(eig(i))
+    enddo
+
+    logu = matmul(matmul(rot, logu),conjg(transpose(rot))) 
+
+  end function utility_logh
 
   !================================================!
   function utility_rotate(mat, rot, dim)
