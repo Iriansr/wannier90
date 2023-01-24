@@ -2963,7 +2963,7 @@ contains
     num_kpts, num_wann, num_valence_bands, effective_model, &
     have_disentangled, seedname, stdout, timer, error, comm)
 
-    use w90_constants,      only: dp, cmplx_0, cmplx_i
+    use w90_constants,      only: dp, cmplx_0, cmplx_i, twopi
     use w90_utility,        only: utility_diagonalize, utility_rotate, &
                                   utility_exphs, utility_logu
     use w90_postw90_common, only: pw90common_fourier_R_to_k_new_second_d, &
@@ -3010,10 +3010,17 @@ contains
     !LOCALS
     complex(kind=dp), allocatable :: UU(:, :), AA(:, :, :), &
                                      r_pos(:,:,:), HH(:, :), &
-                                     HH_da(:, :, :), D_h(:,:,:)
+                                     HH_da(:, :, :), D_h(:,:,:), &
+                                     AUX(:, :), TEV(:, :, :), &
+                                     HF(:, :, :), PT(:, :, :)
     real(kind=dp),    allocatable :: eig(:), eig_da(:, :), &
                                      occ(:)
-    integer                       :: i
+    real(kind=dp)                 :: t, dt, omega, t0
+    integer                       :: i, iw, it1, it2, ntpts, &
+                                     n, m
+
+    ntpts = 100
+    t0 = 0.0_dp
 
     floq_k_list = cmplx_0
 
@@ -3023,6 +3030,10 @@ contains
     allocate (HH_da(num_wann, num_wann, 3))
     allocate (HH(num_wann, num_wann))
     allocate (D_h(num_wann, num_wann, 3))
+    allocate (AUX(num_wann, num_wann))
+    allocate (TEV(num_wann, num_wann, ntpts - 1))
+    allocate (HF(num_wann, num_wann, pw90_berry%kubo_nfreq))
+    allocate (PT(num_wann, num_wann, ntpts - 1))
     allocate (eig(num_wann))
     allocate (eig_da(num_wann, 3))
     allocate (occ(num_wann))
@@ -3058,8 +3069,77 @@ contains
       r_pos(:, :, i) = utility_rotate(AA(:, :, i), UU, num_wann) + cmplx_i*D_h(:,:,i)
     enddo
 
-    !Get electronic occupations
+    !Get electronic occupations.
     call pw90common_get_occ(fermi_energy_list(1), eig, occ, num_wann)
+
+    do iw = 1, pw90_berry%kubo_nfreq !For each frequency:
+
+      omega = pw90_berry%kubo_freq_list(iw)
+
+      if (abs(omega).LE.1.0E-6) then
+        call set_error_input(error, 'The list of selected frequencies cannot contain \omega = 0 while floq = true.', comm)
+        return
+      endif
+
+      !initialize Time-Evolution Operator (TEV),
+      TEV = cmplx_0
+      !and set it to identity.
+      forall (n = 1: num_wann) TEV(n, n, :) = cmplx(1.0_dp, 0.0_dp)
+
+      do it1 = 1, ntpts - 1 !For each time instant within [t0, t0+T):
+
+        t = t0 + twopi*real(it1 - 1, dp)/(omega*real(ntpts - 1, dp))
+
+        do it2 = 1, ntpts !for each time instant within [t0, t0+t]:
+
+          dt = (t-t0)/(real(ntpts-1,dp))
+
+          !get time-dependent Hamiltonian (Hamiltonian gauge),
+          do n = 1, num_wann
+            do m = 1, num_wann
+              if (n == m) then
+                AUX(n, m) = cmplx(eig(n), 0.0_dp)
+              else
+                AUX(n, m) = dot_product(q(t0 + real(it2 - 1, dp)*dt, omega), r_pos(n, m, :))
+              endif
+            enddo
+          end do
+
+          !compute its matrix exp for the corresponding time-slice,
+          AUX = utility_exphs(-cmplx_i*dt*AUX, num_wann, .true., error, comm)
+
+          !accumulate for all time-slices.
+          TEV(:, :, it1) = matmul(TEV(:, :, it1), AUX)
+
+        enddo!it2
+
+      enddo!it1
+
+      !TEV(:, :, it) now contains the TEV for each instant it.
+
+      !Get effective Floquet Hamiltonian for frequency index iw.
+      HF(:, :, iw) = (cmplx_i*omega*utility_logu(TEV(:, :, ntpts - 1),num_wann, error, comm)/twopi)
+
+      !Get the T-periodic operator P(t), Eq. (36), 10.1088/0953-4075/49/1/013001.
+      do it1 = 1, ntpts - 1
+        t = t0 + twopi*real(it1-1,dp)/(omega*real(ntpts-1,dp))
+        PT(:, :, it1) = matmul(TEV(:, :, it1),utility_exphs(cmplx_i*HF*t, num_wann, .true., error, comm))
+      enddo
+
+      print*, iw, ntpts
+
+    enddo !iw
+
+  contains
+
+  pure function q(t, omega) result(u)
+    use w90_constants,     only: dp, cmplx_0, cmplx_i
+
+    real(kind=dp), intent(in) :: t, omega
+    complex(kind=dp)          :: u(3)
+
+    u = sin(omega*t)
+  end function q
 
   end subroutine berry_get_AV_current
 
