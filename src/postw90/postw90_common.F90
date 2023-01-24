@@ -486,6 +486,12 @@ contains
     if (allocated(error)) return
     call comms_bcast(pw90_berry%floq_ntime, 1, error, comm)
     if (allocated(error)) return
+    call comms_bcast(pw90_berry%floq_t0, 1, error, comm)
+    if (allocated(error)) return
+    call comms_bcast(pw90_berry%floq_ntstep, 1, error, comm)
+    if (allocated(error)) return
+    call comms_bcast(pw90_berry%floq_frange, 1, error, comm)
+    if (allocated(error)) return
     fermi_n = 0
     if (on_root) then
       if (allocated(fermi_energy_list)) fermi_n = size(fermi_energy_list)

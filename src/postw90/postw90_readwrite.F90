@@ -1606,6 +1606,29 @@ contains
                                      pw90_berry%floq_time_min)/(pw90_berry%floq_ntime - 1)
     enddo
 
+    pw90_berry%floq_t0 = 0.0_dp
+    call w90_readwrite_get_keyword('floq_t0', found, error, comm, &
+                                    r_value=pw90_berry%floq_t0)
+    if (allocated(error)) return
+
+    pw90_berry%floq_ntstep = 100
+    call w90_readwrite_get_keyword('floq_ntstep', found, error, comm, &
+                                    i_value=pw90_berry%floq_ntstep)
+    if (allocated(error)) return
+    if (found .and. pw90_berry%floq_ntstep .LE. 0) then
+      call set_error_input(error, 'Error: floq_ntstep must be positive nonzero integer', comm)
+      return
+    endif
+
+    pw90_berry%floq_frange = 10
+    call w90_readwrite_get_keyword('floq_frange', found, error, comm, &
+                                    i_value=pw90_berry%floq_frange)
+    if (allocated(error)) return
+    if (found .and. pw90_berry%floq_frange .LE. 0) then
+      call set_error_input(error, 'Error: floq_frange must be positive nonzero integer', comm)
+      return
+    endif
+
     ! TODO: Alternatively, read list of (complex) frequencies; kubo_nfreq is
     !       the length of the list
 

@@ -3015,13 +3015,10 @@ contains
                                      HF(:, :, :), PT(:, :, :)
     real(kind=dp),    allocatable :: eig(:), eig_da(:, :), &
                                      occ(:)
-    real(kind=dp)                 :: t, dt, omega, t0
-    integer                       :: i, iw, it1, it2, ntpts, &
+    real(kind=dp)                 :: t, dt, omega
+    integer                       :: i, iw, it1, it2, &
                                      n, m
-
-    ntpts = 100
-    t0 = 0.0_dp
-
+                                     
     floq_k_list = cmplx_0
 
     allocate (UU(num_wann, num_wann))
@@ -3031,9 +3028,9 @@ contains
     allocate (HH(num_wann, num_wann))
     allocate (D_h(num_wann, num_wann, 3))
     allocate (AUX(num_wann, num_wann))
-    allocate (TEV(num_wann, num_wann, ntpts - 1))
+    allocate (TEV(num_wann, num_wann, pw90_berry%floq_ntstep - 1))
     allocate (HF(num_wann, num_wann, pw90_berry%kubo_nfreq))
-    allocate (PT(num_wann, num_wann, ntpts - 1))
+    allocate (PT(num_wann, num_wann, pw90_berry%floq_ntstep - 1))
     allocate (eig(num_wann))
     allocate (eig_da(num_wann, 3))
     allocate (occ(num_wann))
@@ -3086,13 +3083,13 @@ contains
       !and set it to identity.
       forall (n = 1: num_wann) TEV(n, n, :) = cmplx(1.0_dp, 0.0_dp)
 
-      do it1 = 1, ntpts - 1 !For each time instant within [t0, t0+T):
+      do it1 = 1, pw90_berry%floq_ntstep - 1 !For each time instant within [t0, t0+T):
 
-        t = t0 + twopi*real(it1 - 1, dp)/(omega*real(ntpts - 1, dp))
+        t = pw90_berry%floq_t0 + twopi*real(it1 - 1, dp)/(omega*real(pw90_berry%floq_ntstep - 1, dp))
 
-        do it2 = 1, ntpts !for each time instant within [t0, t0+t]:
+        do it2 = 1, pw90_berry%floq_ntstep !for each time instant within [t0, t0+t]:
 
-          dt = (t-t0)/(real(ntpts-1,dp))
+          dt = (t - pw90_berry%floq_t0)/(real(pw90_berry%floq_ntstep-1,dp))
 
           !get time-dependent Hamiltonian (Hamiltonian gauge),
           do n = 1, num_wann
@@ -3100,7 +3097,7 @@ contains
               if (n == m) then
                 AUX(n, m) = cmplx(eig(n), 0.0_dp)
               else
-                AUX(n, m) = dot_product(q(t0 + real(it2 - 1, dp)*dt, omega), r_pos(n, m, :))
+                AUX(n, m) = dot_product(q(pw90_berry%floq_t0 + real(it2 - 1, dp)*dt, omega), r_pos(n, m, :))
               endif
             enddo
           end do
@@ -3118,15 +3115,13 @@ contains
       !TEV(:, :, it) now contains the TEV for each instant it.
 
       !Get effective Floquet Hamiltonian for frequency index iw.
-      HF(:, :, iw) = (cmplx_i*omega*utility_logu(TEV(:, :, ntpts - 1),num_wann, error, comm)/twopi)
+      HF(:, :, iw) = (cmplx_i*omega*utility_logu(TEV(:, :, pw90_berry%floq_ntstep - 1),num_wann, error, comm)/twopi)
 
       !Get the T-periodic operator P(t), Eq. (36), 10.1088/0953-4075/49/1/013001.
-      do it1 = 1, ntpts - 1
-        t = t0 + twopi*real(it1-1,dp)/(omega*real(ntpts-1,dp))
+      do it1 = 1, pw90_berry%floq_ntstep - 1
+        t = pw90_berry%floq_t0 + twopi*real(it1-1,dp)/(omega*real(pw90_berry%floq_ntstep-1,dp))
         PT(:, :, it1) = matmul(TEV(:, :, it1),utility_exphs(cmplx_i*HF*t, num_wann, .true., error, comm))
       enddo
-
-      print*, iw, ntpts
 
     enddo !iw
 

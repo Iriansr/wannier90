@@ -169,6 +169,9 @@ module w90_postw90_types
     real(kind=dp) :: floq_time_max
     real(kind=dp) :: floq_time_step
     integer       :: floq_ntime
+    real(kind=dp) :: floq_t0
+    integer       :: floq_ntstep
+    integer       :: floq_frange
     real(kind=dp), allocatable :: floq_time_list(:)
   end type pw90_berry_mod_type
 
