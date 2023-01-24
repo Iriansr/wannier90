@@ -1598,36 +1598,36 @@ contains
 
       end if
 
-    end if !print_output%iprint >0, aka "on_root"
-
-    if (eval_floq) then
-        ! -----------------------------!
-        ! Optical Current
-        ! -----------------------------!
-      write (stdout, '(/,1x,a)') &
-      '----------------------------------------------------------'
-      write (stdout, '(1x,a)') &
-      'Output data files related to optical current:             '
-      write (stdout, '(1x,a)') &
-      '----------------------------------------------------------'
-      do i = 1, 3
-        file_name = trim(seedname)//'-curr_'// &
-                    achar(119 + i)//'.dat'
-        file_name = trim(file_name)
-        file_unit = io_file_unit()
-        write (stdout, '(/,3x,a)') '* '//file_name
-        open (file_unit, FILE=file_name, STATUS='UNKNOWN', FORM='FORMATTED')
-        do itime = 1, pw90_berry%floq_ntime
-          do ifreq = 1, pw90_berry%kubo_nfreq
-            write (file_unit, '(4E18.8E3)') real(pw90_berry%floq_time_list(itime), dp), &
-                                            real(pw90_berry%kubo_freq_list(ifreq), dp), &
-                                            real(floq_list(i, itime, ifreq), dp), aimag(floq_list(i, itime, ifreq))
+      if (eval_floq) then
+          ! -----------------------------!
+          ! Optical Current
+          ! -----------------------------!
+        write (stdout, '(/,1x,a)') &
+        '----------------------------------------------------------'
+        write (stdout, '(1x,a)') &
+        'Output data files related to optical current:             '
+        write (stdout, '(1x,a)') &
+        '----------------------------------------------------------'
+        do i = 1, 3
+          file_name = trim(seedname)//'-curr_'// &
+                      achar(119 + i)//'.dat'
+          file_name = trim(file_name)
+          file_unit = io_file_unit()
+          write (stdout, '(/,3x,a)') '* '//file_name
+          open (file_unit, FILE=file_name, STATUS='UNKNOWN', FORM='FORMATTED')
+          do itime = 1, pw90_berry%floq_ntime
+            do ifreq = 1, pw90_berry%kubo_nfreq
+              write (file_unit, '(4E18.8E3)') real(pw90_berry%floq_time_list(itime), dp), &
+                                              real(pw90_berry%kubo_freq_list(ifreq), dp), &
+                                              real(floq_list(i, itime, ifreq), dp), aimag(floq_list(i, itime, ifreq))
+            enddo
+            write (file_unit, *) ''
           enddo
-          write (file_unit, *) ''
+          close (file_unit)
         enddo
-        close (file_unit)
-      enddo
-    endif
+      endif
+
+    end if !print_output%iprint >0, aka "on_root"
 
   end subroutine berry_main
 

@@ -478,6 +478,14 @@ contains
     if (allocated(error)) return
     call comms_bcast(pw90_berry%kubo_nfreq, 1, error, comm)
     if (allocated(error)) return
+    call comms_bcast(pw90_berry%floq_time_min, 1, error, comm)
+    if (allocated(error)) return
+    call comms_bcast(pw90_berry%floq_time_max, 1, error, comm)
+    if (allocated(error)) return
+    call comms_bcast(pw90_berry%floq_time_step, 1, error, comm)
+    if (allocated(error)) return
+    call comms_bcast(pw90_berry%floq_ntime, 1, error, comm)
+    if (allocated(error)) return
     fermi_n = 0
     if (on_root) then
       if (allocated(fermi_energy_list)) fermi_n = size(fermi_energy_list)
@@ -643,6 +651,11 @@ contains
         call set_error_alloc(error, 'Error allocating kubo_freq_list in postw90_w90_wannier90_readwrite_dist', comm)
         return
       endif
+      allocate (pw90_berry%floq_time_list(pw90_berry%floq_ntime), stat=ierr)
+      if (ierr /= 0) then
+        call set_error_alloc(error, 'Error allocating floq_time_list in postw90_w90_wannier90_readwrite_dist', comm)
+        return
+      endif
       allocate (pw90_gyrotropic%band_list(pw90_gyrotropic%num_bands), stat=ierr)
       if (ierr /= 0) then
         call set_error_alloc(error, 'Error allocating gyrotropic_band_list in postw90_w90_wannier90_readwrite_dist', comm)
@@ -699,6 +712,8 @@ contains
     call comms_bcast(pw90_gyrotropic%band_list(1), pw90_gyrotropic%num_bands, error, comm)
     if (allocated(error)) return
     call comms_bcast(pw90_berry%kubo_freq_list(1), pw90_berry%kubo_nfreq, error, comm)
+    if (allocated(error)) return
+    call comms_bcast(pw90_berry%floq_time_list(1), pw90_berry%floq_ntime, error, comm)
     if (allocated(error)) return
     call comms_bcast(pw90_dos%project(1), pw90_dos%num_project, error, comm)
     if (allocated(error)) return
