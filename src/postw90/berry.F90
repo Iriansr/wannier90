@@ -689,7 +689,7 @@ contains
 
         if (eval_floq) then
           call berry_get_AV_current(pw90_berry, dis_manifold, fermi_energy_list, kpt_latt, &
-                                    ws_region, print_output, pw90_band_deriv_degen, wannier_data, &
+                                    ws_region, print_output, physics, pw90_band_deriv_degen, wannier_data, &
                                     ws_distance, wigner_seitz, AA_R, HH_R, u_matrix, v_matrix, eigval, &
                                     kpt, real_lattice, floq_k_list, mp_grid, scissors_shift, num_bands, &
                                     num_kpts, num_wann, num_valence_bands, effective_model, &
@@ -908,7 +908,7 @@ contains
 
         if (eval_floq) then
           call berry_get_AV_current(pw90_berry, dis_manifold, fermi_energy_list, kpt_latt, &
-                                    ws_region, print_output, pw90_band_deriv_degen, wannier_data, &
+                                    ws_region, print_output, physics, pw90_band_deriv_degen, wannier_data, &
                                     ws_distance, wigner_seitz, AA_R, HH_R, u_matrix, v_matrix, eigval, &
                                     kpt, real_lattice, floq_k_list, mp_grid, scissors_shift, num_bands, &
                                     num_kpts, num_wann, num_valence_bands, effective_model, &
@@ -1602,6 +1602,33 @@ contains
           ! -----------------------------!
           ! Optical Current
           ! -----------------------------!
+
+        ! --------------------------------------------------------------------
+        ! At this point floq_list contains
+        !
+        ! (1/N) \sum_{\bm{k}} \sum_{nmlp}\sum_{rs=-\infty}^{\infty} 
+        !  \rho^F_{nm} A^F_{lp} Q^{\dagger F}_{s,ml} Q_{r,pn}^F e^{i[\omega^F_{lp}+(s-r)\omega] t},
+        !
+        ! where A contains the band derivatives of the undriven Hamiltonian in the Floquet gauge, 
+        ! which has units of eV*Angstrom and is an approximation to
+        !
+        ! V_c  \int_{\text{BZ}} \frac{d^3\bm{k}}{(2\pi)^3} \sum_{nmlp}\sum_{rs=-\infty}^{\infty}
+        ! \rho^F_{nm} A^F_{lp} Q^{\dagger F}_{s,ml} Q_{r,pn}^F e^{i[\omega^F_{lp}+(s-r)\omega] t}.
+        !
+        ! (V_c is the cell volume). We want:
+        !
+        ! j^{a} = (-e/\hbar) \int_{\text{BZ}} \frac{d^3\bm{k}}{(2\pi)^3} \sum_{nmlp}\sum_{rs=-\infty}^{\infty}
+        ! \rho^F_{nm} A^F_{lp} Q^{\dagger F}_{s,ml} Q_{r,pn}^F e^{i[\omega^F_{lp}+(s-r)\omega] t},
+        !
+        ! which has units of Ampere/Meter^2.
+        ! --------------------------------------------------------------------
+        ! We have to:
+        ! i) Divide by V_c, so the integrand will be in units of eV/Angstroms^{-2}.
+        ! ii) Multiply by 10^{-20} to pass from eV/Angstrom^{-2} to eV/Meter^{-2}.
+        ! iii) Divide by the magnitude of e to pass from eV/Meter^{-2} to Joule/Meter^{-2}
+        ! iv) Multiply by e and then divide by \hbar to pass from Joule to C/s = Ampere.
+
+        fac = (1.0E-20_dp)/(physics%hbar_SI*cell_volume)
         write (stdout, '(/,1x,a)') &
         '----------------------------------------------------------'
         write (stdout, '(1x,a)') &
@@ -1617,9 +1644,9 @@ contains
           open (file_unit, FILE=file_name, STATUS='UNKNOWN', FORM='FORMATTED')
           do itime = 1, pw90_berry%floq_ntime
             do ifreq = 1, pw90_berry%kubo_nfreq
-              write (file_unit, '(4E18.8E3)') real(pw90_berry%floq_time_list(itime), dp), &
-                                              real(pw90_berry%kubo_freq_list(ifreq), dp), &
-                                              real(floq_list(i, itime, ifreq), dp), aimag(floq_list(i, itime, ifreq))
+              write (file_unit, '(4E18.8E3)') real(pw90_berry%floq_time_list(itime), dp), &!Units = s.
+                                              real(pw90_berry%kubo_freq_list(ifreq), dp), &!Units = eV.
+                                              real(floq_list(i, itime, ifreq), dp), aimag(floq_list(i, itime, ifreq))!Units = Ampere/Meter^2.
             enddo
             write (file_unit, *) ''
           enddo
@@ -2957,15 +2984,15 @@ contains
   end subroutine berry_get_shc_klist
 
   subroutine berry_get_AV_current(pw90_berry, dis_manifold, fermi_energy_list, kpt_latt, &
-    ws_region, print_output, pw90_band_deriv_degen, wannier_data, &
+    ws_region, print_output, physics, pw90_band_deriv_degen, wannier_data, &
     ws_distance, wigner_seitz, AA_R, HH_R, u_matrix, v_matrix, eigval, &
     kpt, real_lattice, floq_k_list, mp_grid, scissors_shift, num_bands, &
     num_kpts, num_wann, num_valence_bands, effective_model, &
     have_disentangled, seedname, stdout, timer, error, comm)
 
-    use w90_constants,      only: dp, cmplx_0, cmplx_i, twopi
+    use w90_constants,      only: dp, cmplx_0, cmplx_i, twopi, pw90_physical_constants_type
     use w90_utility,        only: utility_diagonalize, utility_rotate, &
-                                  utility_exphs, utility_logu
+                                  utility_rotate_new, utility_exphs, utility_logu
     use w90_postw90_common, only: pw90common_fourier_R_to_k_new_second_d, &
                                   pw90common_fourier_R_to_k_vec_dadb, &
                                   pw90common_get_occ
@@ -2981,17 +3008,18 @@ contains
     implicit none
     ! Arguments
     !
-    type(pw90_berry_mod_type),         intent(in)    :: pw90_berry
-    type(dis_manifold_type),           intent(in)    :: dis_manifold
-    type(pw90_band_deriv_degen_type),  intent(in)    :: pw90_band_deriv_degen
-    type(print_output_type),           intent(in)    :: print_output
-    type(ws_region_type),              intent(in)    :: ws_region
-    type(w90comm_type),                intent(in)    :: comm
-    type(wannier_data_type),           intent(in)    :: wannier_data
-    type(wigner_seitz_type),           intent(inout) :: wigner_seitz
-    type(ws_distance_type),            intent(inout) :: ws_distance
-    type(timer_list_type),             intent(inout) :: timer
-    type(w90_error_type), allocatable, intent(out)   :: error
+    type(pw90_berry_mod_type),          intent(in)    :: pw90_berry
+    type(dis_manifold_type),            intent(in)    :: dis_manifold
+    type(pw90_band_deriv_degen_type),   intent(in)    :: pw90_band_deriv_degen
+    type(print_output_type),            intent(in)    :: print_output
+    type(pw90_physical_constants_type), intent(in)    :: physics
+    type(ws_region_type),               intent(in)    :: ws_region
+    type(w90comm_type),                 intent(in)    :: comm
+    type(wannier_data_type),            intent(in)    :: wannier_data
+    type(wigner_seitz_type),            intent(inout) :: wigner_seitz
+    type(ws_distance_type),             intent(inout) :: ws_distance
+    type(timer_list_type),              intent(inout) :: timer
+    type(w90_error_type), allocatable,  intent(out)   :: error
 
     integer, intent(in) :: num_wann, num_bands, num_kpts, &
                            num_valence_bands, stdout, mp_grid(3)
@@ -3011,14 +3039,17 @@ contains
     complex(kind=dp), allocatable :: UU(:, :), AA(:, :, :), &
                                      r_pos(:,:,:), HH(:, :), &
                                      HH_da(:, :, :), D_h(:,:,:), &
+                                     WHF(:, :), &
                                      AUX(:, :), TEV(:, :, :), &
-                                     HF(:, :, :), PT(:, :, :)
+                                     HF(:, :, :), PT(:, :, :), &
+                                     QS(:, :, :, :), QSF(:, :, :), &
+                                     eig_daF(:, :, :), occF(:, :)
     real(kind=dp),    allocatable :: eig(:), eig_da(:, :), &
-                                     occ(:)
+                                     occ(:), eigF(:)
     real(kind=dp)                 :: t, dt, omega
-    integer                       :: i, iw, it1, it2, &
-                                     n, m
-                                     
+    integer                       :: i, iw, it1, it2, is, ir, &
+                                     n, m, l, p
+
     floq_k_list = cmplx_0
 
     allocate (UU(num_wann, num_wann))
@@ -3030,10 +3061,16 @@ contains
     allocate (AUX(num_wann, num_wann))
     allocate (TEV(num_wann, num_wann, pw90_berry%floq_ntstep - 1))
     allocate (HF(num_wann, num_wann, pw90_berry%kubo_nfreq))
+    allocate (WHF(num_wann, num_wann))
+    allocate (eigF(num_wann))
     allocate (PT(num_wann, num_wann, pw90_berry%floq_ntstep - 1))
+    allocate (QS(num_wann, num_wann, -pw90_berry%floq_frange : pw90_berry%floq_frange, pw90_berry%kubo_nfreq))
+    allocate (QSF(num_wann, num_wann, -pw90_berry%floq_frange : pw90_berry%floq_frange))
     allocate (eig(num_wann))
     allocate (eig_da(num_wann, 3))
+    allocate (eig_daF(num_wann, num_wann, 3))
     allocate (occ(num_wann))
+    allocate (occF(num_wann, num_wann))
 
     !Get Hamiltonian matrix, eigenvalues, and the derivatives of the eigenvalues
     !in the Hamiltonian basis. Also D_h and UU.
@@ -3081,15 +3118,15 @@ contains
       !initialize Time-Evolution Operator (TEV),
       TEV = cmplx_0
       !and set it to identity.
-      forall (n = 1: num_wann) TEV(n, n, :) = cmplx(1.0_dp, 0.0_dp)
+      forall (n = 1: num_wann, it1 = 1: pw90_berry%floq_ntstep - 1) TEV(n, n, it1) = cmplx(1.0_dp, 0.0_dp)
 
-      do it1 = 1, pw90_berry%floq_ntstep - 1 !For each time instant within [t0, t0+T):
+      do it1 = 1, pw90_berry%floq_ntstep - 1 !For each time instant within t = [t0, t0+T):
 
-        t = pw90_berry%floq_t0 + twopi*real(it1 - 1, dp)/(omega*real(pw90_berry%floq_ntstep - 1, dp))
+        t = pw90_berry%floq_t0 + twopi*real(it1 - 1, dp)/(omega*real(pw90_berry%floq_ntstep - 1, dp))!Units = eV^{-1}.
 
         do it2 = 1, pw90_berry%floq_ntstep !for each time instant within [t0, t0+t]:
 
-          dt = (t - pw90_berry%floq_t0)/(real(pw90_berry%floq_ntstep-1,dp))
+          dt = (t - pw90_berry%floq_t0)/(real(pw90_berry%floq_ntstep-1,dp))!Units = eV^{-1}
 
           !get time-dependent Hamiltonian (Hamiltonian gauge),
           do n = 1, num_wann
@@ -3104,8 +3141,9 @@ contains
 
           !compute its matrix exp for the corresponding time-slice,
           AUX = utility_exphs(-cmplx_i*dt*AUX, num_wann, .true., error, comm)
+          if (allocated(error)) return
 
-          !accumulate for all time-slices.
+          !accumulate for all time-slices (Suzuki-Trotter expansion).
           TEV(:, :, it1) = matmul(TEV(:, :, it1), AUX)
 
         enddo!it2
@@ -3114,14 +3152,68 @@ contains
 
       !TEV(:, :, it) now contains the TEV for each instant it.
 
-      !Get effective Floquet Hamiltonian for frequency index iw.
-      HF(:, :, iw) = (cmplx_i*omega*utility_logu(TEV(:, :, pw90_berry%floq_ntstep - 1),num_wann, error, comm)/twopi)
+      !Get effective Floquet Hamiltonian for frequency index iw,
+      HF(:, :, iw) = (cmplx_i*omega*utility_logu(TEV(:, :, pw90_berry%floq_ntstep - 1), num_wann, error, comm)/twopi)
+      if (allocated(error)) return
+      !and compute quasienergy eigenvalues and rotation from Hamiltonian to Floquet gauge.
+      call utility_diagonalize(HF(:, :, iw), num_wann, eigF, WHF, error, comm)
+      if (allocated(error)) return
 
       !Get the T-periodic operator P(t), Eq. (36), 10.1088/0953-4075/49/1/013001.
       do it1 = 1, pw90_berry%floq_ntstep - 1
-        t = pw90_berry%floq_t0 + twopi*real(it1-1,dp)/(omega*real(pw90_berry%floq_ntstep-1,dp))
-        PT(:, :, it1) = matmul(TEV(:, :, it1),utility_exphs(cmplx_i*HF*t, num_wann, .true., error, comm))
+        t = pw90_berry%floq_t0 + twopi*real(it1-1,dp)/(omega*real(pw90_berry%floq_ntstep-1,dp))!Units = eV^{-1}.
+        PT(:, :, it1) = matmul(TEV(:, :, it1), utility_exphs(cmplx_i*HF*t, num_wann, .true., error, comm))
       enddo
+
+      !For each \omega frequency harmonic till frange,
+      do is = -pw90_berry%floq_frange, pw90_berry%floq_frange
+        !compute Fourier expansion of P(t).
+        do it1 = 1, pw90_berry%floq_ntstep - 1
+          t = pw90_berry%floq_t0 + twopi*real(it1 - 1, dp)/(omega*real(pw90_berry%floq_ntstep - 1, dp))!Units = eV^{-1}.
+            QS(:, :, is, iw) = QS(:, :, is, iw) + PT(:, :, it1)*exp(-cmplx_i*is*omega*t) &
+                               /real(pw90_berry%floq_ntstep - 1,dp)!Adimensional. Units are OK.
+        enddo
+      enddo
+
+      !For each considered frequency iw, calculate: occ matrix in Floquet gauge,
+      occF = cmplx_0
+      forall (n = 1: num_wann) occF(n, n) = cmplx(occ(n), 0.0_dp)
+      call utility_rotate_new(occF, WHF, num_wann, .true.)
+
+      !velocity matrix at t = t_0 in the Floquet gauge,
+      eig_daF = cmplx_0
+      forall (n = 1: num_wann, i = 1: 3) eig_daF(n, n, i) = cmplx(eig_da(n, i), 0.0_dp)
+      do i = 1, 3
+        call utility_rotate_new(eig_daF(:, :, i), WHF, num_wann, .true.)
+      enddo
+
+      !and Fourier transform of P(t) in the Floquet gauge.
+      QSF = QS(:, :, :, iw)
+      do is = -pw90_berry%floq_frange, pw90_berry%floq_frange
+        call utility_rotate_new(QSF(:, :, is), WHF, num_wann, .true.)
+      enddo
+
+      !For each considered time instant,
+      do it1 = 1, pw90_berry%floq_ntime
+
+        t = pw90_berry%floq_time_list(it1)!Units = s.
+        !To pass to eV^{-1} we have to divide by \hbar in eV*s-s.
+        t = t/physics%eV_seconds!Units = eV^{-1}.
+
+        !calcualte the trace Eq. (????) of Ref. [???].
+        forall (i  =  1: 3, &
+                n  =  1: num_wann, m  =  1: num_wann, &
+                l  =  1: num_wann, p  =  1: num_wann, &
+                ir = -pw90_berry%floq_frange: pw90_berry%floq_frange, &
+                is = -pw90_berry%floq_frange: pw90_berry%floq_frange   )
+
+          floq_k_list(i, it1, iw) = floq_k_list(i, it1, iw) + &
+          occF(n, m)*eig_daF(l, p, i)*QSF(p, n, ir)*conjg(QSF(l, m, is))*&
+          exp(cmplx_i*t*(eigF(l) - eigF(p) + (is - ir)*omega))!Units: eV*Angstrom.
+
+        end forall
+
+      enddo !it1
 
     enddo !iw
 
@@ -3130,6 +3222,7 @@ contains
   pure function q(t, omega) result(u)
     use w90_constants,     only: dp, cmplx_0, cmplx_i
 
+    !u-s units on output need to be eV/Angstrom.
     real(kind=dp), intent(in) :: t, omega
     complex(kind=dp)          :: u(3)
 

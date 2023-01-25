@@ -1574,12 +1574,12 @@ contains
                                     r_value=pw90_berry%floq_time_min)
     if (allocated(error)) return
     
-    pw90_berry%floq_time_max = 1.0E-12_dp
+    pw90_berry%floq_time_max = 1.0E-14_dp
     call w90_readwrite_get_keyword('floq_time_max', found, error, comm, &
                                     r_value=pw90_berry%floq_time_max)
     if (allocated(error)) return
 
-    pw90_berry%floq_time_step = 1.0E-14_dp
+    pw90_berry%floq_time_step = 1.0E-16_dp
     call w90_readwrite_get_keyword('floq_time_step', found, error, comm, &
                                    r_value=pw90_berry%floq_time_step)
     if (allocated(error)) return
