@@ -3075,7 +3075,7 @@ contains
     allocate (WHF(num_wann, num_wann))
     WHF = cmplx_0
     allocate (eigF(num_wann))
-    eigF = cmplx_0
+    eigF = 0.0_dp
     allocate (PT(num_wann, num_wann, pw90_berry%floq_ntstep))
     PT = cmplx_0
     allocate (QS(num_wann, num_wann, -pw90_berry%floq_frange : pw90_berry%floq_frange, pw90_berry%kubo_nfreq))
@@ -3083,13 +3083,13 @@ contains
     allocate (QSF(num_wann, num_wann, -pw90_berry%floq_frange : pw90_berry%floq_frange))
     QSF = cmplx_0
     allocate (eig(num_wann))
-    eig = cmplx_0
+    eig = 0.0_dp
     allocate (eig_da(num_wann, 3))
-    eig_da = cmplx_0
+    eig_da = 0.0_dp
     allocate (eig_daF(num_wann, num_wann, 3))
     eig_daF = cmplx_0
     allocate (occ(num_wann))
-    occ = cmplx_0
+    occ = 0.0_dp
     allocate (occF(num_wann, num_wann))
     occF = cmplx_0
 
