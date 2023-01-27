@@ -3055,24 +3055,43 @@ contains
     floq_k_list = cmplx_0
 
     allocate (UU(num_wann, num_wann))
+    UU = cmplx_0
     allocate (AA(num_wann, num_wann, 3))
+    AA = cmplx_0
     allocate (r_pos(num_wann, num_wann, 3))
+    r_pos = cmplx_0
     allocate (HH_da(num_wann, num_wann, 3))
+    HH_da = cmplx_0
     allocate (HH(num_wann, num_wann))
+    HH = cmplx_0
     allocate (D_h(num_wann, num_wann, 3))
+    D_h = cmplx_0
     allocate (AUX(num_wann, num_wann))
+    AUX = cmplx_0
     allocate (TEV(num_wann, num_wann, pw90_berry%floq_ntstep))
+    TEV = cmplx_0
     allocate (HF(num_wann, num_wann, pw90_berry%kubo_nfreq))
+    HF = cmplx_0
     allocate (WHF(num_wann, num_wann))
+    WHF = cmplx_0
     allocate (eigF(num_wann))
+    eigF = cmplx_0
     allocate (PT(num_wann, num_wann, pw90_berry%floq_ntstep))
+    PT = cmplx_0
     allocate (QS(num_wann, num_wann, -pw90_berry%floq_frange : pw90_berry%floq_frange, pw90_berry%kubo_nfreq))
+    QS = cmplx_0
     allocate (QSF(num_wann, num_wann, -pw90_berry%floq_frange : pw90_berry%floq_frange))
+    QSF = cmplx_0
     allocate (eig(num_wann))
+    eig = cmplx_0
     allocate (eig_da(num_wann, 3))
+    eig_da = cmplx_0
     allocate (eig_daF(num_wann, num_wann, 3))
+    eig_daF = cmplx_0
     allocate (occ(num_wann))
+    occ = cmplx_0
     allocate (occF(num_wann, num_wann))
+    occF = cmplx_0
 
     !Get Hamiltonian matrix, eigenvalues, and the derivatives of the eigenvalues
     !in the Hamiltonian basis. Also D_h and UU.
@@ -3158,6 +3177,7 @@ contains
       if (allocated(error)) return
 
       !Get the T-periodic operator P(t), Eq. (36), 10.1088/0953-4075/49/1/013001.
+      PT = cmplx_0
       do it = 1, pw90_berry%floq_ntstep
         t = pw90_berry%floq_t0 + twopi*real(it-1,dp)/(omega*real(pw90_berry%floq_ntstep-1,dp))!Units = eV^{-1}.
         PT(:, :, it) = matmul(TEV(:, :, it), utility_exphs(cmplx_i*HF*t, num_wann, .true., error, comm))
@@ -3186,6 +3206,7 @@ contains
       enddo
 
       !and Fourier transform of P(t) in the Floquet gauge.
+      QSF = cmplx_0
       QSF = QS(:, :, :, iw)
       do is = -pw90_berry%floq_frange, pw90_berry%floq_frange
         call utility_rotate_new(QSF(:, :, is), WHF, num_wann, .true.)
