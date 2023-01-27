@@ -3047,7 +3047,7 @@ contains
     real(kind=dp),    allocatable :: eig(:), eig_da(:, :), &
                                      occ(:), eigF(:)
     real(kind=dp)                 :: t, dt, omega
-    integer                       :: i, iw, it1, it2, is, ir, &
+    integer                       :: i, iw, it, is, ir, &
                                      n, m, l, p
 
     real(kind=dp), parameter :: power = 500.0E-9_dp, s_spot = 30.0E-10_dp
@@ -3061,11 +3061,11 @@ contains
     allocate (HH(num_wann, num_wann))
     allocate (D_h(num_wann, num_wann, 3))
     allocate (AUX(num_wann, num_wann))
-    allocate (TEV(num_wann, num_wann, pw90_berry%floq_ntstep - 1))
+    allocate (TEV(num_wann, num_wann, pw90_berry%floq_ntstep))
     allocate (HF(num_wann, num_wann, pw90_berry%kubo_nfreq))
     allocate (WHF(num_wann, num_wann))
     allocate (eigF(num_wann))
-    allocate (PT(num_wann, num_wann, pw90_berry%floq_ntstep - 1))
+    allocate (PT(num_wann, num_wann, pw90_berry%floq_ntstep))
     allocate (QS(num_wann, num_wann, -pw90_berry%floq_frange : pw90_berry%floq_frange, pw90_berry%kubo_nfreq))
     allocate (QSF(num_wann, num_wann, -pw90_berry%floq_frange : pw90_berry%floq_frange))
     allocate (eig(num_wann))
@@ -3119,61 +3119,56 @@ contains
 
       !initialize Time-Evolution Operator (TEV),
       TEV = cmplx_0
-      !and set it to identity.
-      forall (n = 1: num_wann, it1 = 1: pw90_berry%floq_ntstep - 1) TEV(n, n, it1) = cmplx(1.0_dp, 0.0_dp)
+      !and set it to identity for first time instant (TEV(t_0, t_0) = 1).
+      forall (n = 1: num_wann) TEV(n, n, 1) = cmplx(1.0_dp, 0.0_dp)
 
-      do it1 = 1, pw90_berry%floq_ntstep - 1 !For each time instant within t = [t0, t0+T):
+      do it = 2, pw90_berry%floq_ntstep !For each time instant within t = (t0, t0+T]:
 
-        t = pw90_berry%floq_t0 + twopi*real(it1 - 1, dp)/(omega*real(pw90_berry%floq_ntstep - 1, dp))!Units = eV^{-1}.
+        t = pw90_berry%floq_t0 + twopi*real(it - 1, dp)/(omega*real(pw90_berry%floq_ntstep - 1, dp))!Units = eV^{-1}.
 
-        do it2 = 1, pw90_berry%floq_ntstep !for each time instant within [t0, t0+t]:
+        !get time-dependent Hamiltonian (Hamiltonian gauge),
+        do n = 1, num_wann
+          do m = 1, num_wann
+            if (n == m) then
+              AUX(n, m) = cmplx(eig(n), 0.0_dp)
+            else
+              AUX(n, m) = dot_product(q(t, omega, &
+              power, s_spot, physics), r_pos(n, m, :))
+            endif
+          enddo
+        end do
 
-          dt = (t - pw90_berry%floq_t0)/(real(pw90_berry%floq_ntstep-1,dp))!Units = eV^{-1}
+        !compute its matrix exp for the corresponding time-slice,
+        AUX = utility_exphs(-cmplx_i*twopi*AUX/(omega*real(pw90_berry%floq_ntstep - 1, dp)), &
+                             num_wann, .true., error, comm)
+        if (allocated(error)) return
 
-          !get time-dependent Hamiltonian (Hamiltonian gauge),
-          do n = 1, num_wann
-            do m = 1, num_wann
-              if (n == m) then
-                AUX(n, m) = cmplx(eig(n), 0.0_dp)
-              else
-                AUX(n, m) = dot_product(q(pw90_berry%floq_t0 + real(it2 - 1, dp)*dt, omega, &
-                power, s_spot, physics), r_pos(n, m, :))
-              endif
-            enddo
-          end do
+        !accumulate for all time-slices (Suzuki-Trotter expansion).
+        TEV(:, :, it) = matmul(TEV(:, :, it - 1), AUX)
 
-          !compute its matrix exp for the corresponding time-slice,
-          AUX = utility_exphs(-cmplx_i*dt*AUX, num_wann, .true., error, comm)
-          if (allocated(error)) return
-
-          !accumulate for all time-slices (Suzuki-Trotter expansion).
-          TEV(:, :, it1) = matmul(TEV(:, :, it1), AUX)
-
-        enddo!it2
-
-      enddo!it1
+      enddo!it
 
       !TEV(:, :, it) now contains the TEV for each instant it.
 
       !Get effective Floquet Hamiltonian for frequency index iw,
-      HF(:, :, iw) = (cmplx_i*omega*utility_logu(TEV(:, :, pw90_berry%floq_ntstep - 1), num_wann, error, comm)/twopi)
+      HF(:, :, iw) = (cmplx_i*omega*utility_logu(TEV(:, :, pw90_berry%floq_ntstep), num_wann, error, comm)/twopi)
       if (allocated(error)) return
       !and compute quasienergy eigenvalues and rotation from Hamiltonian to Floquet gauge.
       call utility_diagonalize(HF(:, :, iw), num_wann, eigF, WHF, error, comm)
       if (allocated(error)) return
 
       !Get the T-periodic operator P(t), Eq. (36), 10.1088/0953-4075/49/1/013001.
-      do it1 = 1, pw90_berry%floq_ntstep - 1
-        t = pw90_berry%floq_t0 + twopi*real(it1-1,dp)/(omega*real(pw90_berry%floq_ntstep-1,dp))!Units = eV^{-1}.
-        PT(:, :, it1) = matmul(TEV(:, :, it1), utility_exphs(cmplx_i*HF*t, num_wann, .true., error, comm))
+      do it = 1, pw90_berry%floq_ntstep
+        t = pw90_berry%floq_t0 + twopi*real(it-1,dp)/(omega*real(pw90_berry%floq_ntstep-1,dp))!Units = eV^{-1}.
+        PT(:, :, it) = matmul(TEV(:, :, it), utility_exphs(cmplx_i*HF*t, num_wann, .true., error, comm))
       enddo
 
       !For each \omega frequency harmonic till frange,
       do is = -pw90_berry%floq_frange, pw90_berry%floq_frange
         !compute Fourier expansion of P(t).
-        do it1 = 1, pw90_berry%floq_ntstep - 1
-          t = pw90_berry%floq_t0 + twopi*real(it1 - 1, dp)/(omega*real(pw90_berry%floq_ntstep - 1, dp))!Units = eV^{-1}.
-            QS(:, :, is, iw) = QS(:, :, is, iw) + PT(:, :, it1)*exp(-cmplx_i*is*omega*t) &
+        do it = 1, pw90_berry%floq_ntstep
+          t = pw90_berry%floq_t0 + twopi*real(it - 1, dp)/(omega*real(pw90_berry%floq_ntstep - 1, dp))!Units = eV^{-1}.
+            QS(:, :, is, iw) = QS(:, :, is, iw) + PT(:, :, it)*exp(-cmplx_i*is*omega*t) &
                                /real(pw90_berry%floq_ntstep - 1,dp)!Adimensional. Units are OK.
         enddo
       enddo
@@ -3197,9 +3192,9 @@ contains
       enddo
 
       !For each considered time instant,
-      do it1 = 1, pw90_berry%floq_ntime
+      do it = 1, pw90_berry%floq_ntime
 
-        t = pw90_berry%floq_time_list(it1)!Units = s.
+        t = pw90_berry%floq_time_list(it)!Units = s.
         !To pass to eV^{-1} we have to divide by \hbar in eV*s-s.
         t = t/physics%eV_seconds!Units = eV^{-1}.
 
@@ -3210,13 +3205,13 @@ contains
                 ir = -pw90_berry%floq_frange: pw90_berry%floq_frange, &
                 is = -pw90_berry%floq_frange: pw90_berry%floq_frange   )
 
-          floq_k_list(i, it1, iw) = floq_k_list(i, it1, iw) + &
+          floq_k_list(i, it, iw) = floq_k_list(i, it, iw) + &
           occF(n, m)*eig_daF(l, p, i)*QSF(p, n, ir)*conjg(QSF(l, m, is))*&
           exp(cmplx_i*t*(eigF(n) - eigF(m) + real(ir - is, dp)*omega))!Units: eV*Angstrom.
 
         end forall
 
-      enddo !it1
+      enddo !it
 
     enddo !iw
 
