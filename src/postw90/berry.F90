@@ -3216,21 +3216,39 @@ contains
       do it = 1, pw90_berry%floq_ntime
 
         t = pw90_berry%floq_time_list(it)!Units = s.
-        !To pass to eV^{-1} we have to divide by \hbar in eV*s-s.
-        t = t/physics%eV_seconds!Units = eV^{-1}.
+        !We use Energy = |e|*eps = \hbar\omega = 2\pi\hbar/t -> eps^{-1} = |e|t/(2\pi\hbar).
+        !To pass to eV^{-1} we have to divide by (2\pi\hbar) in eV*s-s.
+        t = t/(twopi*physics%eV_seconds)!Units = eV^{-1}.
 
-        !calcualte the trace Eq. (????) of Ref. [???].
-        forall (i  =  1: 3, &
-                n  =  1: num_wann, m  =  1: num_wann, &
-                l  =  1: num_wann, p  =  1: num_wann, &
-                ir = -pw90_berry%floq_frange: pw90_berry%floq_frange, &
-                is = -pw90_berry%floq_frange: pw90_berry%floq_frange   )
+        !calcualte the trace Eq. (????) of Ref. [???]. I have left the
+        !original forall statement, with do-s should not get warnings.
+
+        !forall (i  =  1: 3, &
+        !        n  =  1: num_wann, m  =  1: num_wann, &
+        !        l  =  1: num_wann, p  =  1: num_wann, &
+        !        ir = -pw90_berry%floq_frange: pw90_berry%floq_frange, &
+        !        is = -pw90_berry%floq_frange: pw90_berry%floq_frange   )
+
+        do i = 1, 3
+        do n = 1, num_wann
+        do m = 1, num_wann
+        do l = 1, num_wann
+        do p = 1, num_wann
+        do ir = -pw90_berry%floq_frange, pw90_berry%floq_frange
+        do is = -pw90_berry%floq_frange, pw90_berry%floq_frange
 
           floq_k_list(i, it, iw) = floq_k_list(i, it, iw) + &
           occF(n, m)*eig_daF(l, p, i)*QSF(p, n, ir)*conjg(QSF(l, m, is))*&
           exp(cmplx_i*t*(eigF(n) - eigF(m) + real(ir - is, dp)*omega))!Units: eV*Angstrom.
 
-        end forall
+        !end forall
+        enddo
+        enddo
+        enddo
+        enddo
+        enddo
+        enddo
+        enddo
 
       enddo !it
 
