@@ -2254,6 +2254,14 @@ contains
       write (stdout, '(1x,a46,10x,f8.3,13x,a1)') '|  Step size for optical responses           :', &
         pw90_extra_io%kubo_freq_step, '|'
       write (stdout, '(1x,a46,10x,f8.3,13x,a1)') '|  Upper eigenvalue for optical responses    :', pw90_berry%kubo_eigval_max, '|'
+      if (index(pw90_berry%task, 'floq') > 0) then
+        write (stdout, '(1x,a46,10x,a8,13x,a1)') '|  t0 in the Floquet calculation             :', pw90_berry%floq_t0, '|'
+        write (stdout, '(1x,a46,10x,a8,13x,a1)') '|  Number points used to calculate TEV       :', pw90_berry%floq_ntstep, '|'
+        write (stdout, '(1x,a46,10x,a8,13x,a1)') '|  Number harmonics to calculate FT-s        :', pw90_berry%floq_frange, '|'
+        write (stdout, '(1x,a46,10x,a8,13x,a1)') '|  Lower time for Floquet calculation        :', pw90_berry%floq_time_min, '|'
+        write (stdout, '(1x,a46,10x,a8,13x,a1)') '|  Upper time for Floquet calculation        :', pw90_berry%floq_time_max, '|'
+        write (stdout, '(1x,a46,10x,a8,13x,a1)') '|  Time step for Floquet calculation         :', pw90_berry%floq_time_step, '|'
+      endif
       if (index(pw90_berry%task, 'sc') > 0) then
         write (stdout, '(1x,a46,10x,f8.3,13x,a1)') '|  Smearing factor for shift current         :', pw90_berry%sc_eta, '|'
         write (stdout, '(1x,a46,10x,f8.3,13x,a1)') '|  Frequency theshold for shift current      :', pw90_berry%sc_w_thr, '|'
