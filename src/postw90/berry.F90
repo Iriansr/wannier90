@@ -3273,7 +3273,7 @@ contains
     !i) Multiply by e to obtain the force amplitude on C*V/m = J/m = N.
     !ii) Divide by e to obtain the amplitude on eV/m.
     !iii) Divide by 10^{10} to pass from eV/m to eV/Angstrom.
-    amp = amp*10.0E-10_dp!Units = eV*Angstrom
+    amp = amp*1.0E-10_dp!Units = eV*Angstrom
 
     u(1) = amp*cmplx(cos(omega*t), 0.0_dp)/sqrt(2.0_dp)
     u(2) = u(1)
