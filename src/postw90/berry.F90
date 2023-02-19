@@ -98,6 +98,7 @@ contains
     !
     !================================================!
 
+    use extrapolation_integration, only: integral_extrapolation, shrink_array, expand_array
     use w90_comms, only: comms_reduce, w90comm_type, mpirank, mpisize, comms_array_split, &
     comms_gatherv
     use w90_constants, only: dp, cmplx_0, pi, pw90_physical_constants_type
@@ -221,9 +222,10 @@ contains
     logical :: ladpt(fermi_n)
 
     integer, allocatable :: counts(:), displs(:)
-    integer :: nkpts, my_nkpts, iloc
+    integer :: nkpts, my_nkpts, iloc, info
     logical :: on_root = .false.
     real(kind=dp), allocatable :: my_test(:), test(:)
+    real(kind=dp) :: result_test
 
     my_node_id = mpirank(comm)
     num_nodes = mpisize(comm)
@@ -769,13 +771,12 @@ contains
       kweight_adpt = kweight/pw90_berry%curv_adpt_kmesh**3
 
       nkpts = product(pw90_berry%kmesh%mesh)
-      call comms_array_split(nkpts, counts, displs, comm)!
-      my_nkpts = counts(my_node_id)!
+      call comms_array_split(nkpts, counts, displs, comm)
+      my_nkpts = counts(my_node_id)
       allocate(my_test(my_nkpts))
 
-      do iloc = 1, my_nkpts!
+      do iloc = 1, my_nkpts
         loop_xyz = iloc - 1 + displs(my_node_id)!
-        !print*, my_node_id, loop_xyz!
 
         loop_x = loop_xyz/(pw90_berry%kmesh%mesh(2)*pw90_berry%kmesh%mesh(3))
         loop_y = (loop_xyz - loop_x*(pw90_berry%kmesh%mesh(2) &
@@ -786,9 +787,7 @@ contains
         kpt(2) = loop_y*db2
         kpt(3) = loop_z*db3
 
-        !print*, loop_xyz, kpt !Test to ensure that the border of the BZ is included.
-
-        my_test(iloc) = real(loop_xyz + 1, dp)
+        my_test(iloc) = cos(kpt(1))*exp(sin(2*kpt(1)))
 
         ! ***BEGIN CODE BLOCK 1***
         if (eval_ahc) then
@@ -994,9 +993,14 @@ contains
     call comms_gatherv(my_test, my_nkpts, test, counts, displs, error, comm)
     if (allocated(error)) return
     if (on_root) then
-      do iloc = 1, nkpts
-        print*, iloc, test(iloc)
-      enddo
+      call integral_extrapolation(test, &
+                                  (/pw90_berry%kmesh%mesh(1), pw90_berry%kmesh%mesh(2), pw90_berry%kmesh%mesh(3)/), &
+                                  (/0.0_dp, 1.0_dp, 0.0_dp, 1.0_dp, 0.0_dp, 1.0_dp/), &
+                                  result_test, info)
+      print*, "True result: 1.7162064453979657"
+      print*, "info = 0: Rectangle approximation, default option"
+      print*, "info = 1: Extrapolation method"
+      print*, "info = ", info, result_test
     endif
 
     ! Collect contributions from all nodes

@@ -93,6 +93,9 @@ $(DYNLIBRARY): $(OBJS) $(OBJS) $(OBJS_LIBV1)
 clean:
 	rm -f *.o *.mod *.MOD *.obj
 
+integration.o: ../integration.F90
+	 $(COMPILER) $(POSTOPTS) $(FCOPTS) -c ../integration.F90
+
 constants.o: ../constants.F90
 	 $(COMPILER) $(POSTOPTS) $(FCOPTS) -c ../constants.F90
 
@@ -171,7 +174,7 @@ kpath.o: $(POSTDIR)kpath.F90 comms.o types.o constants.o io.o spin.o berry.o pos
 kslice.o: $(POSTDIR)kslice.F90 comms.o types.o constants.o io.o spin.o berry.o postw90_types.o ws_distance.o
 	$(COMPILER) $(POSTOPTS) $(FCOPTS) -c $(POSTDIR)kslice.F90
 
-berry.o: $(POSTDIR)berry.F90 comms.o types.o constants.o utility.o postw90_common.o get_oper.o io.o spin.o wan_ham.o postw90_types.o ws_distance.o
+berry.o: $(POSTDIR)berry.F90 comms.o types.o constants.o integration.o utility.o postw90_common.o get_oper.o io.o spin.o wan_ham.o postw90_types.o ws_distance.o
 	$(COMPILER) $(POSTOPTS) $(FCOPTS) -c $(POSTDIR)berry.F90
 
 gyrotropic.o: $(POSTDIR)gyrotropic.F90 comms.o types.o constants.o utility.o postw90_common.o get_oper.o io.o spin.o wan_ham.o berry.o postw90_types.o ws_distance.o
