@@ -179,6 +179,7 @@ contains
     ! shift current
     real(kind=dp), allocatable :: sc_k_list(:, :, :)
     real(kind=dp), allocatable :: sc_list(:, :, :)
+    real(kind=dp), allocatable :: my_sc_k_list(:, :), kpt_sc_k_list(:, :), sc_s_result(:)
     ! kdotp
     complex(kind=dp), allocatable :: kdotp(:, :, :, :, :)
     ! Complex optical conductivity, dividided into Hermitean and
@@ -222,10 +223,8 @@ contains
     logical :: ladpt(fermi_n)
 
     integer, allocatable :: counts(:), displs(:)
-    integer :: nkpts, my_nkpts, iloc, info
+    integer :: nkpts, my_nkpts, iloc, info, dummy_int
     logical :: on_root = .false.
-    real(kind=dp), allocatable :: my_test(:), test(:)
-    real(kind=dp) :: result_test
 
     my_node_id = mpirank(comm)
     num_nodes = mpisize(comm)
@@ -381,8 +380,12 @@ contains
       if (allocated(error)) return
       allocate (sc_k_list(3, 6, pw90_berry%kubo_nfreq))
       allocate (sc_list(3, 6, pw90_berry%kubo_nfreq))
+      allocate (my_sc_k_list(product(pw90_berry%kmesh%mesh), 3*6*pw90_berry%kubo_nfreq))
+      allocate (sc_s_result(3*6*pw90_berry%kubo_nfreq))
       sc_k_list = 0.0_dp
       sc_list = 0.0_dp
+      my_sc_k_list = 0.0_dp
+      sc_s_result = 0.0_dp
     endif
 
     if (eval_shc) then
@@ -773,7 +776,6 @@ contains
       nkpts = product(pw90_berry%kmesh%mesh)
       call comms_array_split(nkpts, counts, displs, comm)
       my_nkpts = counts(my_node_id)
-      allocate(my_test(my_nkpts))
 
       do iloc = 1, my_nkpts
         loop_xyz = iloc - 1 + displs(my_node_id)!
@@ -786,8 +788,6 @@ contains
         kpt(1) = loop_x*db1
         kpt(2) = loop_y*db2
         kpt(3) = loop_z*db3
-
-        my_test(iloc) = cos(kpt(1))*exp(sin(2*kpt(1)))
 
         ! ***BEGIN CODE BLOCK 1***
         if (eval_ahc) then
@@ -897,6 +897,8 @@ contains
           if (allocated(error)) return
 
           sc_list = sc_list + sc_k_list*kweight
+          call shrink_array (sc_k_list, my_sc_k_list(iloc, :), dummy_int)
+          my_sc_k_list = my_sc_k_list*kweight
         end if
 
         ! ***END CODE BLOCK 1***
@@ -984,25 +986,6 @@ contains
 
     end if !wanint_kpoint_file
 
-    ! Send results to root process
-    if (on_root) then
-      allocate (test(nkpts))
-    else
-      allocate (test(1))
-    end if
-    call comms_gatherv(my_test, my_nkpts, test, counts, displs, error, comm)
-    if (allocated(error)) return
-    if (on_root) then
-      call integral_extrapolation(test, &
-                                  (/pw90_berry%kmesh%mesh(1), pw90_berry%kmesh%mesh(2), pw90_berry%kmesh%mesh(3)/), &
-                                  (/0.0_dp, 1.0_dp, 0.0_dp, 1.0_dp, 0.0_dp, 1.0_dp/), &
-                                  result_test, info)
-      print*, "True result: 1.7162064453979657"
-      print*, "info = 0: Rectangle approximation, default option"
-      print*, "info = 1: Extrapolation method"
-      print*, "info = ", info, result_test
-    endif
-
     ! Collect contributions from all nodes
     if (eval_ahc) then
       call comms_reduce(imf_list(1, 1, 1), 3*3*fermi_n, 'SUM', error, comm)
@@ -1038,8 +1021,24 @@ contains
     endif
 
     if (eval_sc) then
-      call comms_reduce(sc_list(1, 1, 1), 3*6*pw90_berry%kubo_nfreq, 'SUM', error, comm)
+      if (on_root) then
+        allocate (kpt_sc_k_list(product(pw90_berry%kmesh%mesh), 3*6*pw90_berry%kubo_nfreq))
+      else
+        allocate (kpt_sc_k_list(1, 3*6*pw90_berry%kubo_nfreq))
+      end if
+      call comms_gatherv(my_sc_k_list, 3*6*pw90_berry%kubo_nfreq*my_nkpts, &
+                         kpt_sc_k_list, 3*6*pw90_berry%kubo_nfreq*counts, &
+                         3*6*pw90_berry%kubo_nfreq*displs, error, comm)
       if (allocated(error)) return
+      if (on_root) then
+        call integral_extrapolation(kpt_sc_k_list, &
+                                    (/pw90_berry%kmesh%mesh(1), pw90_berry%kmesh%mesh(2), pw90_berry%kmesh%mesh(3)/), &
+                                    (/0.0_dp, 1.0_dp, 0.0_dp, 1.0_dp, 0.0_dp, 1.0_dp/), &
+                                    sc_s_result, info)
+        !call comms_reduce(sc_list(1, 1, 1), 3*6*pw90_berry%kubo_nfreq, 'SUM', error, comm)
+        !if (allocated(error)) return
+        call expand_array(sc_s_result, sc_k_list, dummy_int)
+      endif
     end if
 
     if (eval_shc) then
@@ -1464,6 +1463,14 @@ contains
         ! --------------------------------------------------------------------
 
         fac = physics%eV_seconds*pi*physics%elem_charge_SI**3/(4*physics%hbar_SI**(2)*cell_volume)
+        if (info .eq. 1) then
+          write (stdout, '(/,1x,a)') &
+            '----------------------------------------------------------'
+          write (stdout, '(1x,a)') &
+            'Integral done using the extrapolation method              '
+          write (stdout, '(/,1x,a)') &
+            '----------------------------------------------------------'
+        endif
         write (stdout, '(/,1x,a)') &
           '----------------------------------------------------------'
         write (stdout, '(1x,a)') &
