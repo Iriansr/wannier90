@@ -98,7 +98,8 @@ contains
     !
     !================================================!
 
-    use w90_comms, only: comms_reduce, w90comm_type, mpirank, mpisize
+    use w90_comms, only: comms_reduce, w90comm_type, mpirank, mpisize, comms_array_split, &
+    comms_gatherv
     use w90_constants, only: dp, cmplx_0, pi, pw90_physical_constants_type
     use w90_utility, only: utility_recip_lattice_base
     use w90_get_oper, only: get_HH_R, get_AA_R, get_BB_R, get_CC_R, get_SS_R, get_SHC_R, &
@@ -219,8 +220,16 @@ contains
     logical :: ladpt_kmesh
     logical :: ladpt(fermi_n)
 
+    integer, allocatable :: counts(:), displs(:)
+    integer :: nkpts, my_nkpts, iloc
+    logical :: on_root = .false.
+    real(kind=dp), allocatable :: my_test(:), test(:)
+
     my_node_id = mpirank(comm)
     num_nodes = mpisize(comm)
+    allocate (counts(0:num_nodes - 1))
+    allocate (displs(0:num_nodes - 1))
+    if (my_node_id == 0) on_root = .true.
 
     if (fermi_n == 0) then
       call set_error_input(error, 'Must specify one or more Fermi levels when berry=true', comm)
@@ -239,9 +248,18 @@ contains
 
     ! Mesh spacing in reduced coordinates
     !
-    db1 = 1.0_dp/real(pw90_berry%kmesh%mesh(1), dp)
-    db2 = 1.0_dp/real(pw90_berry%kmesh%mesh(2), dp)
-    db3 = 1.0_dp/real(pw90_berry%kmesh%mesh(3), dp)
+    !Change: dbi = 1.0_dp/real(pw90_berry%kmesh%mesh(i), dp) --> 
+    !dbi = 1.0_dp/real(pw90_berry%kmesh%mesh(i) - 1, dp).
+    !This way all the BZ (including borders) is sampled. However, 1/0 
+    !can occur if mesh(i) = 1. I will include an exception.
+
+    db1 = 1.0_dp/real(pw90_berry%kmesh%mesh(1) - 1, dp)
+    db2 = 1.0_dp/real(pw90_berry%kmesh%mesh(2) - 1, dp)
+    db3 = 1.0_dp/real(pw90_berry%kmesh%mesh(3) - 1, dp)
+
+    if (pw90_berry%kmesh%mesh(1) .eq. 1) db1 = 0.0_dp
+    if (pw90_berry%kmesh%mesh(2) .eq. 1) db2 = 0.0_dp
+    if (pw90_berry%kmesh%mesh(3) .eq. 1) db3 = 0.0_dp
 
     eval_ahc = .false.
     eval_morb = .false.
@@ -750,7 +768,15 @@ contains
       kweight = db1*db2*db3
       kweight_adpt = kweight/pw90_berry%curv_adpt_kmesh**3
 
-      do loop_xyz = my_node_id, PRODUCT(pw90_berry%kmesh%mesh) - 1, num_nodes
+      nkpts = product(pw90_berry%kmesh%mesh)
+      call comms_array_split(nkpts, counts, displs, comm)!
+      my_nkpts = counts(my_node_id)!
+      allocate(my_test(my_nkpts))
+
+      do iloc = 1, my_nkpts!
+        loop_xyz = iloc - 1 + displs(my_node_id)!
+        !print*, my_node_id, loop_xyz!
+
         loop_x = loop_xyz/(pw90_berry%kmesh%mesh(2)*pw90_berry%kmesh%mesh(3))
         loop_y = (loop_xyz - loop_x*(pw90_berry%kmesh%mesh(2) &
                                      *pw90_berry%kmesh%mesh(3)))/pw90_berry%kmesh%mesh(3)
@@ -759,6 +785,10 @@ contains
         kpt(1) = loop_x*db1
         kpt(2) = loop_y*db2
         kpt(3) = loop_z*db3
+
+        !print*, loop_xyz, kpt !Test to ensure that the border of the BZ is included.
+
+        my_test(iloc) = real(loop_xyz + 1, dp)
 
         ! ***BEGIN CODE BLOCK 1***
         if (eval_ahc) then
@@ -954,6 +984,20 @@ contains
       end do !loop_xyz
 
     end if !wanint_kpoint_file
+
+    ! Send results to root process
+    if (on_root) then
+      allocate (test(nkpts))
+    else
+      allocate (test(1))
+    end if
+    call comms_gatherv(my_test, my_nkpts, test, counts, displs, error, comm)
+    if (allocated(error)) return
+    if (on_root) then
+      do iloc = 1, nkpts
+        print*, iloc, test(iloc)
+      enddo
+    endif
 
     ! Collect contributions from all nodes
     if (eval_ahc) then
