@@ -3154,8 +3154,6 @@ contains
           enddo
         end do
 
-        print*, AUX(3, 5);stop
-
         !compute its matrix exp for the corresponding time-slice,
         AUX = utility_exphs(-cmplx_i*twopi*AUX/(omega*real(pw90_berry%floq_ntstep - 1, dp)), &
                              num_wann, .true., error, comm)

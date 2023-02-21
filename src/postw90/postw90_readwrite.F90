@@ -2299,8 +2299,8 @@ contains
         write (stdout, '(1x,a46,10x,a8,13x,a1)') '|  Provided force constants (in V/m)       : |'
         do i = 1, pw90_berry%floq_num_harmonics
           write (stdout, *)&
-          '|', pw90_berry%floq_forc(i, 1), pw90_berry%floq_forc(i, 2), pw90_berry%floq_forc(i, 3), pw90_berry%floq_forc(i, 4), &
-           pw90_berry%floq_forc(i, 5), pw90_berry%floq_forc(i, 6) ,'|'
+          '|', pw90_berry%floq_forc(1, i), pw90_berry%floq_forc(2, i), pw90_berry%floq_forc(3, i), pw90_berry%floq_forc(4, i), &
+           pw90_berry%floq_forc(5, i), pw90_berry%floq_forc(6, i) ,'|'
         enddo
       endif
       if (index(pw90_berry%task, 'sc') > 0) then
