@@ -172,7 +172,9 @@ module w90_postw90_types
     real(kind=dp) :: floq_t0
     integer       :: floq_ntstep
     integer       :: floq_frange
-    real(kind=dp), allocatable :: floq_time_list(:)
+    integer       :: floq_num_harmonics
+    real(kind=dp), allocatable :: floq_time_list(:), &
+                                  floq_forc(:, :)
   end type pw90_berry_mod_type
 
   ! spin Hall conductivity (postw90 - common, get_oper, berry, kpath)

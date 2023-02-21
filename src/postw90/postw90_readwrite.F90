@@ -1569,64 +1569,98 @@ contains
                                               pw90_extra_io%kubo_freq_min)/(pw90_berry%kubo_nfreq - 1)
     enddo
 
-    pw90_berry%floq_time_min = 0.0_dp
-    call w90_readwrite_get_keyword('floq_time_min', found, error, comm, &
-                                    r_value=pw90_berry%floq_time_min)
-    if (allocated(error)) return
-    
-    pw90_berry%floq_time_max = 1.0E-14_dp
-    call w90_readwrite_get_keyword('floq_time_max', found, error, comm, &
-                                    r_value=pw90_berry%floq_time_max)
-    if (allocated(error)) return
+    if (index(pw90_berry%task, 'floq') > 0) then
 
-    pw90_berry%floq_time_step = 1.0E-16_dp
-    call w90_readwrite_get_keyword('floq_time_step', found, error, comm, &
-                                   r_value=pw90_berry%floq_time_step)
-    if (allocated(error)) return
-    if (found .and. pw90_berry%floq_time_step < 0.0_dp) then
-      call set_error_input(error, 'Error: floq_time_step must be positive', comm)
-      return
-    endif
+      call w90_readwrite_get_keyword('floq_num_harmonics', found, error, comm, &
+                                      i_value=pw90_berry%floq_num_harmonics)
+      if (allocated(error)) return
+      if (.not.found) then
+        call set_error_input(error, 'Error: floq_num_harmonics not found while berry_task = floq', comm)
+        return
+      endif
+      if ((found).and.(pw90_berry%floq_num_harmonics .le. 0)) then
+        call set_error_input(error, 'Error: floq_num_harmonics must be a positive odd number', comm)
+        return
+      endif
 
-    pw90_berry%floq_ntime = nint((pw90_berry%floq_time_max - pw90_berry%floq_time_min) &
-    /pw90_berry%floq_time_step) + 1
-    if (pw90_berry%floq_ntime <= 1) pw90_berry%floq_ntime = 2
-    pw90_berry%floq_time_step = (pw90_berry%floq_time_max - pw90_berry%floq_time_min) &
-      /(pw90_berry%floq_ntime - 1)
+      if ((found).and.(modulo(pw90_berry%floq_num_harmonics, 2) .eq. 0)) then
+        call set_error_input(error, 'Error: floq_num_harmonics must be a positive odd number', comm)
+        return
+      endif
 
-    if (allocated(pw90_berry%floq_time_list)) deallocate (pw90_berry%floq_time_list)
-    allocate (pw90_berry%floq_time_list(pw90_berry%floq_ntime), stat=ierr)
-    if (ierr /= 0) then
-      call set_error_alloc(error, 'Error allocating floq_time_list in w90_wannier90_readwrite_read', comm)
-      return
-    endif
-    do i = 1, pw90_berry%floq_ntime
-      pw90_berry%floq_time_list(i) = pw90_berry%floq_time_min + &
-                                     (i - 1)*(pw90_berry%floq_time_max - &
-                                     pw90_berry%floq_time_min)/(pw90_berry%floq_ntime - 1)
-    enddo
+      if (allocated(pw90_berry%floq_forc)) deallocate (pw90_berry%floq_forc)
+      allocate (pw90_berry%floq_forc(pw90_berry%floq_num_harmonics, 6), stat=ierr)
+      if (ierr /= 0) then
+        call set_error_alloc(error, 'Error allocating floq_forc in w90_wannier90_readwrite_read', comm)
+        return
+      endif
+      call w90_readwrite_get_keyword_block('floq_forc', found, pw90_berry%floq_num_harmonics, 6, 1.0_dp, error, comm, &
+                                           r_value=pw90_berry%floq_forc)
+      if (.not.found) then
+        call set_error_input(error, 'Error: floq_forc block not found while berry_task = floq', comm)
+        return
+      endif
 
-    pw90_berry%floq_t0 = 0.0_dp
-    call w90_readwrite_get_keyword('floq_t0', found, error, comm, &
-                                    r_value=pw90_berry%floq_t0)
-    if (allocated(error)) return
+      pw90_berry%floq_time_min = 0.0_dp
+      call w90_readwrite_get_keyword('floq_time_min', found, error, comm, &
+                                      r_value=pw90_berry%floq_time_min)
+      if (allocated(error)) return
+      
+      pw90_berry%floq_time_max = 1.0E-14_dp
+      call w90_readwrite_get_keyword('floq_time_max', found, error, comm, &
+                                      r_value=pw90_berry%floq_time_max)
+      if (allocated(error)) return
 
-    pw90_berry%floq_ntstep = 100
-    call w90_readwrite_get_keyword('floq_ntstep', found, error, comm, &
-                                    i_value=pw90_berry%floq_ntstep)
-    if (allocated(error)) return
-    if (found .and. pw90_berry%floq_ntstep .LE. 0) then
-      call set_error_input(error, 'Error: floq_ntstep must be positive nonzero integer', comm)
-      return
-    endif
+      pw90_berry%floq_time_step = 1.0E-16_dp
+      call w90_readwrite_get_keyword('floq_time_step', found, error, comm, &
+                                    r_value=pw90_berry%floq_time_step)
+      if (allocated(error)) return
+      if (found .and. pw90_berry%floq_time_step < 0.0_dp) then
+        call set_error_input(error, 'Error: floq_time_step must be positive', comm)
+        return
+      endif
 
-    pw90_berry%floq_frange = 10
-    call w90_readwrite_get_keyword('floq_frange', found, error, comm, &
-                                    i_value=pw90_berry%floq_frange)
-    if (allocated(error)) return
-    if (found .and. pw90_berry%floq_frange .LE. 0) then
-      call set_error_input(error, 'Error: floq_frange must be positive nonzero integer', comm)
-      return
+      pw90_berry%floq_ntime = nint((pw90_berry%floq_time_max - pw90_berry%floq_time_min) &
+      /pw90_berry%floq_time_step) + 1
+      if (pw90_berry%floq_ntime <= 1) pw90_berry%floq_ntime = 2
+      pw90_berry%floq_time_step = (pw90_berry%floq_time_max - pw90_berry%floq_time_min) &
+        /(pw90_berry%floq_ntime - 1)
+
+      if (allocated(pw90_berry%floq_time_list)) deallocate (pw90_berry%floq_time_list)
+      allocate (pw90_berry%floq_time_list(pw90_berry%floq_ntime), stat=ierr)
+      if (ierr /= 0) then
+        call set_error_alloc(error, 'Error allocating floq_time_list in w90_wannier90_readwrite_read', comm)
+        return
+      endif
+      do i = 1, pw90_berry%floq_ntime
+        pw90_berry%floq_time_list(i) = pw90_berry%floq_time_min + &
+                                      (i - 1)*(pw90_berry%floq_time_max - &
+                                      pw90_berry%floq_time_min)/(pw90_berry%floq_ntime - 1)
+      enddo
+
+      pw90_berry%floq_t0 = 0.0_dp
+      call w90_readwrite_get_keyword('floq_t0', found, error, comm, &
+                                      r_value=pw90_berry%floq_t0)
+      if (allocated(error)) return
+
+      pw90_berry%floq_ntstep = 100
+      call w90_readwrite_get_keyword('floq_ntstep', found, error, comm, &
+                                      i_value=pw90_berry%floq_ntstep)
+      if (allocated(error)) return
+      if (found .and. pw90_berry%floq_ntstep .LE. 0) then
+        call set_error_input(error, 'Error: floq_ntstep must be positive nonzero integer', comm)
+        return
+      endif
+
+      pw90_berry%floq_frange = 10
+      call w90_readwrite_get_keyword('floq_frange', found, error, comm, &
+                                      i_value=pw90_berry%floq_frange)
+      if (allocated(error)) return
+      if (found .and. pw90_berry%floq_frange .LE. 0) then
+        call set_error_input(error, 'Error: floq_frange must be positive nonzero integer', comm)
+        return
+      endif
+
     endif
 
     ! TODO: Alternatively, read list of (complex) frequencies; kubo_nfreq is
@@ -2256,11 +2290,18 @@ contains
       write (stdout, '(1x,a46,10x,f8.3,13x,a1)') '|  Upper eigenvalue for optical responses    :', pw90_berry%kubo_eigval_max, '|'
       if (index(pw90_berry%task, 'floq') > 0) then
         write (stdout, '(1x,a46,10x,f8.3,13x,a1)') '|  t0 in the Floquet calculation             :', pw90_berry%floq_t0, '|'
-        write (stdout, '(1x,a46,10x,i4,13x,a1)') '|  Number points used to calculate TEV       :', pw90_berry%floq_ntstep, '|'
-        write (stdout, '(1x,a46,10x,i4,13x,a1)') '|  Number harmonics to calculate FT-s        :', pw90_berry%floq_frange, '|'
+        write (stdout, '(1x,a46,10x,i4,13x,a1)') '|  Number points used to calculate TEV          :', pw90_berry%floq_ntstep, '|'
+        write (stdout, '(1x,a46,10x,i4,13x,a1)') '|  Number harmonics to calculate FT-s           :', pw90_berry%floq_frange, '|'
         write (stdout, '(1x,a46,10x,e18.3,13x,a1)') '|  Lower time for Floquet calculation        :', pw90_berry%floq_time_min, '|'
         write (stdout, '(1x,a46,10x,e18.3,13x,a1)') '|  Upper time for Floquet calculation        :', pw90_berry%floq_time_max, '|'
         write (stdout, '(1x,a46,10x,e18.3,13x,a1)') '|  Time step for Floquet calculation         :', pw90_berry%floq_time_step, '|'
+        write (stdout, '(1x,a46,10x,i4,13x,a1)') '|  Number of harmonics in provided force         :', pw90_berry%floq_num_harmonics, '|'
+        write (stdout, '(1x,a46,10x,a8,13x,a1)') '|  Provided force constants (in V/m)       : |'
+        do i = 1, pw90_berry%floq_num_harmonics
+          write (stdout, *)&
+          '|', pw90_berry%floq_forc(i, 1), pw90_berry%floq_forc(i, 2), pw90_berry%floq_forc(i, 3), pw90_berry%floq_forc(i, 4), &
+           pw90_berry%floq_forc(i, 5), pw90_berry%floq_forc(i, 6) ,'|'
+        enddo
       endif
       if (index(pw90_berry%task, 'sc') > 0) then
         write (stdout, '(1x,a46,10x,f8.3,13x,a1)') '|  Smearing factor for shift current         :', pw90_berry%sc_eta, '|'

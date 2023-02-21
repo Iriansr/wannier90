@@ -3050,8 +3050,6 @@ contains
     integer                       :: i, iw, it, is, ir, &
                                      n, m, l, p
 
-    real(kind=dp), parameter :: power = 500.0E-9_dp, s_spot = 30.0E-10_dp
-
     floq_k_list = cmplx_0
 
     allocate (UU(num_wann, num_wann))
@@ -3151,8 +3149,7 @@ contains
             if (n == m) then
               AUX(n, m) = cmplx(eig(n), 0.0_dp)
             else
-              AUX(n, m) = dot_product(q(t, omega, &
-              power, s_spot, physics), r_pos(n, m, :))
+              AUX(n, m) = dot_product(q(t, omega, pw90_berry), r_pos(n, m, :))
             endif
           enddo
         end do
@@ -3256,28 +3253,34 @@ contains
 
   contains
 
-  pure function q(t, omega, power, s_spot, physics) result(u)
-    !Placeholder for force definition: I suppose L45º monochromatic laser 
-    !on the XY plane with power power (given in W-s) and spot-size s_spot given in (m^2).
+  pure function q(t, omega, pw90_berry) result(u)
 
-    use w90_constants,     only: dp, cmplx_0, cmplx_i, pw90_physical_constants_type
-    type(pw90_physical_constants_type), intent(in)    :: physics
-    real(kind=dp), intent(in) :: t, omega, power, s_spot
+    !Evaluate the force from the input card at time t and freq omega.
+
+    use w90_constants,     only: dp, cmplx_0, cmplx_i
+    use w90_postw90_types,  only: pw90_berry_mod_type
+    type(pw90_berry_mod_type),          intent(in)    :: pw90_berry
+    real(kind=dp), intent(in) :: t, omega
     complex(kind=dp)          :: u(3)
-    real(kind=dp)             :: amp
+
+    integer :: iharm, icoord, harm
+
 
     u = cmplx_0!u-s units need to be eV/Angstrom on output:
 
-    amp = sqrt(2*power/(s_spot*299792458.0_dp*physics%eps0_SI))!Units = V/m.
+    do iharm = 1, pw90_berry%floq_num_harmonics
+      do icoord = 1, 3
+        u(icoord) = u(icoord) + &
+        pw90_berry%floq_forc(iharm, 2*icoord-1)* exp(cmplx_i*pw90_berry%floq_forc(iharm, 2*icoord)) *&
+        exp(cmplx_i*((real(iharm,dp) - real(pw90_berry%floq_num_harmonics + 1, dp)/2.0_dp)*omega*t))!Units = V/m.
+      enddo
+    enddo
     !We must:
     !i) Multiply by e to obtain the force amplitude on C*V/m = J/m = N.
     !ii) Divide by e to obtain the amplitude on eV/m.
     !iii) Divide by 10^{10} to pass from eV/m to eV/Angstrom.
-    amp = amp*1.0E-10_dp!Units = eV*Angstrom
+    u = u*1.0E-10_dp!Units = eV*Angstrom
 
-    u(1) = amp*cmplx(cos(omega*t), 0.0_dp)/sqrt(2.0_dp)
-    u(2) = u(1)
-    u(3) = cmplx_0
   end function q
 
   end subroutine berry_get_AV_current
