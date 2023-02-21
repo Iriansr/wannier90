@@ -1024,7 +1024,7 @@ contains
       if (on_root) then
         allocate (kpt_sc_k_list(product(pw90_berry%kmesh%mesh), 3*6*pw90_berry%kubo_nfreq))
       else
-        allocate (kpt_sc_k_list(1, 3*6*pw90_berry%kubo_nfreq))
+        allocate (kpt_sc_k_list(1, 1))
       end if
       call comms_gatherv(my_sc_k_list, 3*6*pw90_berry%kubo_nfreq*my_nkpts, &
                          kpt_sc_k_list, 3*6*pw90_berry%kubo_nfreq*counts, &
