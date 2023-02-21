@@ -3154,6 +3154,8 @@ contains
           enddo
         end do
 
+        print*, AUX(3, 5);stop
+
         !compute its matrix exp for the corresponding time-slice,
         AUX = utility_exphs(-cmplx_i*twopi*AUX/(omega*real(pw90_berry%floq_ntstep - 1, dp)), &
                              num_wann, .true., error, comm)
@@ -3271,7 +3273,7 @@ contains
     do iharm = 1, pw90_berry%floq_num_harmonics
       do icoord = 1, 3
         u(icoord) = u(icoord) + &
-        pw90_berry%floq_forc(iharm, 2*icoord-1)* exp(cmplx_i*pw90_berry%floq_forc(iharm, 2*icoord)) *&
+        pw90_berry%floq_forc(2*icoord-1, iharm)* exp(cmplx_i*pw90_berry%floq_forc(2*icoord, iharm)) *&
         exp(cmplx_i*((real(iharm,dp) - real(pw90_berry%floq_num_harmonics + 1, dp)/2.0_dp)*omega*t))!Units = V/m.
       enddo
     enddo

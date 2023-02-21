@@ -659,7 +659,7 @@ contains
         call set_error_alloc(error, 'Error allocating kubo_freq_list in postw90_w90_wannier90_readwrite_dist', comm)
         return
       endif
-      allocate (pw90_berry%floq_forc(pw90_berry%floq_num_harmonics, 6), stat=ierr)
+      allocate (pw90_berry%floq_forc(6, pw90_berry%floq_num_harmonics), stat=ierr)
       if (ierr /= 0) then
         call set_error_alloc(error, 'Error allocating floq_forc in w90_wannier90_readwrite_read', comm)
         return
