@@ -1624,11 +1624,11 @@ contains
         ! --------------------------------------------------------------------
         ! We have to:
         ! i) Divide by V_c, so the integrand will be in units of eV/Angstroms^{-2}.
-        ! ii) Multiply by 10^{-20} to pass from eV/Angstrom^{-2} to eV/Meter^{-2}.
-        ! iii) Divide by the magnitude of e to pass from eV/Meter^{-2} to Joule/Meter^{-2}
+        ! ii) Multiply by 10^{20} to pass from eV/Angstrom^{-2} to eV/Meter^{-2}.
+        ! iii) Multiply by the magnitude of e to pass from eV/Meter^{-2} to Joule/Meter^{-2}
         ! iv) Multiply by e and then divide by \hbar to pass from Joule to C/s = Ampere.
 
-        fac = (1.0E-20_dp)/(physics%hbar_SI*cell_volume)
+        fac = (1.0E20_dp*physics%elem_charge_SI**2)/(physics%hbar_SI*cell_volume)
         write (stdout, '(/,1x,a)') &
         '----------------------------------------------------------'
         write (stdout, '(1x,a)') &
@@ -1646,7 +1646,8 @@ contains
             do ifreq = 1, pw90_berry%kubo_nfreq
               write (file_unit, '(4E18.8E3)') real(pw90_berry%floq_time_list(itime), dp), &!Units = s.
                                               real(pw90_berry%kubo_freq_list(ifreq), dp), &!Units = eV.
-                                              real(floq_list(i, itime, ifreq), dp), aimag(floq_list(i, itime, ifreq))!Units = Ampere/Meter^2.
+                                              real(fac*floq_list(i, itime, ifreq), dp), &
+                                              aimag(fac*floq_list(i, itime, ifreq))!Units = Ampere/Meter^2.
             enddo
             write (file_unit, *) ''
           enddo
@@ -3279,7 +3280,7 @@ contains
     !i) Multiply by e to obtain the force amplitude on C*V/m = J/m = N.
     !ii) Divide by e to obtain the amplitude on eV/m.
     !iii) Divide by 10^{10} to pass from eV/m to eV/Angstrom.
-    u = u*1.0E-10_dp!Units = eV*Angstrom
+    u = u*1.0E-10_dp!Units = eV/Angstrom
 
   end function q
 
