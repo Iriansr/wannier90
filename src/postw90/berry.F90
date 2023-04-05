@@ -2288,7 +2288,7 @@ contains
     integer, intent(in) :: stdout
 
     real(kind=dp), intent(in) :: kpt(3)
-    real(kind=dp), intent(out) :: gen_r_nm(:, :, :)
+    real(kind=dp), intent(out) :: gen_r_nm(:, :, :, :)
     real(kind=dp), intent(in) :: eigval(:, :)
     real(kind=dp), intent(in) :: real_lattice(3, 3)
     real(kind=dp), intent(in) :: scissors_shift
@@ -2398,7 +2398,7 @@ contains
           ! store generalized derivative as an array on the additional spatial index,
           ! its composed of 8 terms in total, see Eq (34) combined with (30) and
           ! (32) of IATS18
-          gen_r_nm(n,m,:) = (AA_da_bar(n, m, :, a) &
+          gen_r_nm(n,m,a,:) = (AA_da_bar(n, m, :, a) &
                          + ((AA_bar(n, n, :) - AA_bar(m, m, :))*D_h_no_eta(n, m, a) + &
                             (AA_bar(n, n, a) - AA_bar(m, m, a))*D_h_no_eta(n, m, :)) &
                          - cmplx_i*AA_bar(n, m, :)*(AA_bar(n, n, a) - AA_bar(m, m, a)) &
@@ -2414,7 +2414,7 @@ contains
           if (pw90_berry%sc_use_eta_corr) then
             do p = 1, num_wann
               if (p == n .or. p == m) cycle
-              gen_r_nm(n,m,:) = gen_r_nm(n,m,:) &
+              gen_r_nm(n,m,a,:) = gen_r_nm(n,m,a,:) &
                             - pw90_berry%sc_eta**2/((eig(p) - eig(m))**2 &
                                                     + pw90_berry%sc_eta**2)/(eig(n) - eig(m)) &
                             *(AA_bar(n, p, :)*HH_da_bar(p, m, a) &
@@ -3232,8 +3232,10 @@ contains
                                      QS(:, :, :, :), QSF(:, :, :), &
                                      eig_daF(:, :, :), occF(:, :)
     real(kind=dp),    allocatable :: eig(:), eig_da(:, :), &
-                                     occ(:), eigF(:)
+                                     occ(:), eigF(:), &
+                                     gen_r_nm(:, :, :, :)
     real(kind=dp)                 :: t, dt, omega
+    complex(kind=dp)              :: aux_vec(3)
     integer                       :: i, iw, it, is, ir, &
                                      n, m, l, p
 
@@ -3277,6 +3279,8 @@ contains
     occ = 0.0_dp
     allocate (occF(num_wann, num_wann))
     occF = cmplx_0
+    allocate (gen_r_nm(num_wann, num_wann, 3, 3))
+    gen_r_nm = 0.0_dp
 
     !Get Hamiltonian matrix, eigenvalues, and the derivatives of the eigenvalues
     !in the Hamiltonian basis. Also D_h and UU.
@@ -3309,6 +3313,16 @@ contains
       r_pos(:, :, i) = utility_rotate(AA(:, :, i), UU, num_wann) + cmplx_i*D_h(:,:,i)
     enddo
 
+    !Obtain the gen. derivative of position operator matrix elements
+    !in the Hamiltonian basis. 
+    call berry_get_pos_gen_deriv(pw90_berry, dis_manifold, kpt_latt, &
+                                ws_region, print_output, pw90_band_deriv_degen, wannier_data, &
+                                ws_distance, wigner_seitz, AA_R, HH_R, u_matrix, v_matrix, eigval, &
+                                kpt, real_lattice, gen_r_nm, scissors_shift, mp_grid, num_bands, &
+                                num_kpts, num_wann, num_valence_bands, effective_model, &
+                                have_disentangled, seedname, stdout, timer, error, comm)
+    if (allocated(error)) return
+
     !Get electronic occupations.
     call pw90common_get_occ(fermi_energy_list(1), eig, occ, num_wann)
 
@@ -3334,12 +3348,17 @@ contains
         do n = 1, num_wann
           do m = 1, num_wann
             if (n == m) then
-              AUX(n, m) = cmplx(eig(n), 0.0_dp)
+              AUX(n, m) = cmplx(eig(n), 0.0_dp) + &
+              dot_product(int_q(t, omega, pw90_berry),eig_da(n, :))/physics%eV_seconds!1st term of the intra. contribution.!1st term of the intra. contribution.
             else
-              AUX(n, m) = dot_product(q(t, omega, pw90_berry), r_pos(n, m, :))
+              do i = 1, 3
+                aux_vec(i) = dot_product(q(t, omega, pw90_berry), gen_r_nm(n, m, :, i))
+              enddo
+              AUX(n, m) = dot_product(q(t, omega, pw90_berry), r_pos(n, m, :)) + &
+              dot_product(int_q(t, omega, pw90_berry),aux_vec)/physics%eV_seconds!1st term of the intra. contribution.
             endif
           enddo
-        end do
+        enddo
 
         !compute its matrix exp for the corresponding time-slice,
         AUX = utility_exphs(-cmplx_i*twopi*AUX/(omega*real(pw90_berry%floq_ntstep - 1, dp)), &
@@ -3469,6 +3488,37 @@ contains
     u = u*1.0E-10_dp!Units = eV/Angstrom
 
   end function q
+
+  pure function int_q(t, omega, pw90_berry) result(u)
+
+  !Evaluate the force from the input card at time t and freq omega.
+
+  use w90_constants,     only: dp, cmplx_0, cmplx_i
+  use w90_postw90_types,  only: pw90_berry_mod_type
+  type(pw90_berry_mod_type),          intent(in)    :: pw90_berry
+  real(kind=dp), intent(in) :: t, omega
+  complex(kind=dp)          :: u(3)
+
+  integer :: iharm, icoord, harm
+
+
+  u = cmplx_0!u-s units need to be eV/Angstrom on output:
+
+  do iharm = 1, pw90_berry%floq_num_harmonics
+    do icoord = 1, 3
+      u(icoord) = u(icoord) + &
+      pw90_berry%floq_forc(2*icoord-1, iharm)* exp(cmplx_i*pw90_berry%floq_forc(2*icoord, iharm)) *&
+      exp(cmplx_i*((real(iharm,dp) - real(pw90_berry%floq_num_harmonics + 1, dp)/2.0_dp)*omega*t))/&
+      cmplx_i*((real(iharm,dp) - real(pw90_berry%floq_num_harmonics + 1, dp)/2.0_dp)*omega)!Units = V*eV/m.
+    enddo
+  enddo
+  !We must:
+  !i) Multiply by e to obtain the momentum amplitude on C*V*eV/m = J*eV/m = eV*N.
+  !ii) Divide by e to obtain the amplitude on eV*eV/m.
+  !iii) Divide by 10^{10} to pass from eV*eV/m to eV*eV/Angstrom.
+  u = u*1.0E-10_dp!Units = eV*eV/Angstrom
+
+end function int_q
 
   end subroutine berry_get_AV_current
 
