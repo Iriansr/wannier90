@@ -2248,6 +2248,192 @@ contains
 
   end subroutine berry_get_kubo_k
 
+  subroutine berry_get_pos_gen_deriv(pw90_berry, dis_manifold, kpt_latt, &
+                                    ws_region, print_output, pw90_band_deriv_degen, wannier_data, &
+                                    ws_distance, wigner_seitz, AA_R, HH_R, u_matrix, v_matrix, eigval, &
+                                    kpt, real_lattice, gen_r_nm, scissors_shift, mp_grid, num_bands, &
+                                    num_kpts, num_wann, num_valence_bands, effective_model, &
+                                    have_disentangled, seedname, stdout, timer, error, comm)!ALVARO
+
+    !Copypaste of some lines of get_sc_k_list to obtain the "generalized" derivative
+    !of the interband matrix elements. Maybe this shall be in wan_ham module.
+
+    use w90_constants, only: dp, cmplx_0, cmplx_i
+    use w90_types, only: print_output_type, wannier_data_type, &
+      dis_manifold_type, ws_region_type, ws_distance_type, timer_list_type
+    use w90_postw90_types, only: pw90_berry_mod_type, pw90_band_deriv_degen_type, wigner_seitz_type
+    use w90_postw90_common, only: pw90common_fourier_R_to_k_vec_dadb
+    use w90_wan_ham, only: wham_get_D_h, &
+      wham_get_eig_UU_HH_AA_sc, wham_get_eig_deleig, wham_get_D_h_P_value
+    use w90_comms, only: w90comm_type
+    use w90_utility, only: utility_rotate, utility_zdotu
+
+    implicit none
+
+    ! arguments
+    type(pw90_berry_mod_type), intent(in) :: pw90_berry
+    type(dis_manifold_type), intent(in) :: dis_manifold
+    type(pw90_band_deriv_degen_type), intent(in) :: pw90_band_deriv_degen
+    type(print_output_type), intent(in) :: print_output
+    type(ws_region_type), intent(in) :: ws_region
+    type(w90comm_type), intent(in) :: comm
+    type(wannier_data_type), intent(in) :: wannier_data
+    type(wigner_seitz_type), intent(inout) :: wigner_seitz
+    type(ws_distance_type), intent(inout) :: ws_distance
+    type(timer_list_type), intent(inout) :: timer
+    type(w90_error_type), allocatable, intent(out) :: error
+
+    integer, intent(in) :: num_wann, num_bands, num_kpts, num_valence_bands
+    integer, intent(in) :: mp_grid(3)
+    integer, intent(in) :: stdout
+
+    real(kind=dp), intent(in) :: kpt(3)
+    real(kind=dp), intent(out) :: gen_r_nm(:, :, :)
+    real(kind=dp), intent(in) :: eigval(:, :)
+    real(kind=dp), intent(in) :: real_lattice(3, 3)
+    real(kind=dp), intent(in) :: scissors_shift
+    real(kind=dp), intent(in) :: kpt_latt(:, :)
+
+    complex(kind=dp), intent(in) :: u_matrix(:, :, :), v_matrix(:, :, :)
+    complex(kind=dp), allocatable, intent(inout) :: AA_R(:, :, :, :) ! <0n|r|Rm>
+    complex(kind=dp), allocatable, intent(inout) :: HH_R(:, :, :) !  <0n|r|Rm>
+
+    character(len=50), intent(in) :: seedname
+    logical, intent(in) :: have_disentangled
+    logical, intent(in) :: effective_model
+
+    ! local variables
+    complex(kind=dp), allocatable :: UU(:, :)
+    complex(kind=dp), allocatable :: AA(:, :, :), AA_bar(:, :, :)
+    complex(kind=dp), allocatable :: AA_da(:, :, :, :), AA_da_bar(:, :, :, :)
+    complex(kind=dp), allocatable :: HH_da(:, :, :), HH_da_bar(:, :, :)
+    complex(kind=dp), allocatable :: HH_dadb(:, :, :, :), HH_dadb_bar(:, :, :, :)
+    complex(kind=dp), allocatable :: HH(:, :)
+    complex(kind=dp), allocatable :: D_h(:, :, :), D_h_no_eta(:, :, :)
+
+    real(kind=dp), allocatable :: eig(:)
+    real(kind=dp), allocatable :: eig_da(:, :)
+
+    real(kind=dp) :: recip_lattice(3, 3), volume
+    complex(kind=dp) :: sum_AD(3, 3), sum_HD(3, 3)
+    integer :: a, b, c, n, m
+    integer :: p ! i, if, r, ifreq
+
+    allocate (UU(num_wann, num_wann))
+    allocate (AA(num_wann, num_wann, 3))
+    allocate (AA_bar(num_wann, num_wann, 3))
+    allocate (AA_da(num_wann, num_wann, 3, 3))
+    allocate (AA_da_bar(num_wann, num_wann, 3, 3))
+    allocate (HH_da(num_wann, num_wann, 3))
+    allocate (HH_da_bar(num_wann, num_wann, 3))
+    allocate (HH_dadb(num_wann, num_wann, 3, 3))
+    allocate (HH_dadb_bar(num_wann, num_wann, 3, 3))
+    allocate (HH(num_wann, num_wann))
+    allocate (D_h(num_wann, num_wann, 3))
+    allocate (D_h_no_eta(num_wann, num_wann, 3))
+    allocate (eig(num_wann))
+    allocate (eig_da(num_wann, 3))
+
+    ! do not use Wannier centres in the FT exponentials (usual W90 convention)
+    call wham_get_eig_UU_HH_AA_sc(dis_manifold, kpt_latt, ws_region, print_output, wannier_data, &
+                                  ws_distance, wigner_seitz, HH, HH_da, HH_dadb, HH_R, u_matrix, UU, &
+                                  v_matrix, eig, eigval, kpt, real_lattice, scissors_shift, &
+                                  mp_grid, num_bands, num_kpts, num_wann, num_valence_bands, &
+                                  effective_model, have_disentangled, seedname, stdout, timer, &
+                                  error, comm)
+    if (allocated(error)) return
+
+    call pw90common_fourier_R_to_k_vec_dadb(ws_region, wannier_data, ws_distance, wigner_seitz, &
+                                            AA_R, kpt, real_lattice, mp_grid, num_wann, error, &
+                                            comm, OO_da=AA, OO_dadb=AA_da)
+    if (allocated(error)) return
+
+    call wham_get_eig_deleig(dis_manifold, kpt_latt, pw90_band_deriv_degen, ws_region, print_output, wannier_data, &
+                            ws_distance, wigner_seitz, HH_da, HH, HH_R, u_matrix, UU, v_matrix, &
+                            eig_da, eig, eigval, kpt, real_lattice, scissors_shift, mp_grid, &
+                            num_bands, num_kpts, num_wann, num_valence_bands, effective_model, &
+                            have_disentangled, seedname, stdout, timer, error, comm)
+    if (allocated(error)) return
+
+    ! get D_h (Eq. (24) WYSV06)
+    call wham_get_D_h_P_value(pw90_berry, HH_da, D_h, UU, eig, num_wann)
+    call wham_get_D_h(HH_da, D_h_no_eta, UU, eig, num_wann)
+
+    ! rotate quantities from W to H gauge (we follow wham_get_D_h for delHH_bar_i)
+    do a = 1, 3
+      ! Berry connection A
+      AA_bar(:, :, a) = utility_rotate(AA(:, :, a), UU, num_wann)
+      ! first derivative of Hamiltonian dH_da
+      HH_da_bar(:, :, a) = utility_rotate(HH_da(:, :, a), UU, num_wann)
+      do b = 1, 3
+        ! derivative of Berry connection dA_da
+        AA_da_bar(:, :, a, b) = utility_rotate(AA_da(:, :, a, b), UU, num_wann)
+        ! second derivative of Hamiltonian d^{2}H_dadb
+        HH_dadb_bar(:, :, a, b) = utility_rotate(HH_dadb(:, :, a, b), UU, num_wann)
+      enddo
+    enddo
+
+    ! loop on initial and final bands
+    do n = 1, num_wann
+      do m = 1, num_wann
+
+        ! first compute the two sums over intermediate states between AA_bar and HH_da_bar with D_h
+        ! appearing in Eqs. (30) and (32) of IATS18
+        sum_AD = cmplx_0
+        sum_HD = cmplx_0
+        do a = 1, 3
+          do c = 1, 3
+            ! Note that we substract diagonal elements in AA_bar and
+            ! HH_da_bar to match the convention in IATS18
+            ! (diagonals in D_h are automatically zero, so we do not substract them)
+            sum_AD(c, a) = (utility_zdotu(AA_bar(n, :, c), D_h(:, m, a)) - AA_bar(n, n, c)*D_h(n, m, a)) &
+                           - (utility_zdotu(D_h(n, :, a), AA_bar(:, m, c)) - D_h(n, m, a)*AA_bar(m, m, c))
+            sum_HD(c, a) = (utility_zdotu(HH_da_bar(n, :, c), D_h(:, m, a)) - HH_da_bar(n, n, c)*D_h(n, m, a)) &
+                           - (utility_zdotu(D_h(n, :, a), HH_da_bar(:, m, c)) - D_h(n, m, a)*HH_da_bar(m, m, c))
+          enddo
+        enddo
+
+        ! loop over direction of generalized derivative
+        do a = 1, 3
+          ! store generalized derivative as an array on the additional spatial index,
+          ! its composed of 8 terms in total, see Eq (34) combined with (30) and
+          ! (32) of IATS18
+          gen_r_nm(n,m,:) = (AA_da_bar(n, m, :, a) &
+                         + ((AA_bar(n, n, :) - AA_bar(m, m, :))*D_h_no_eta(n, m, a) + &
+                            (AA_bar(n, n, a) - AA_bar(m, m, a))*D_h_no_eta(n, m, :)) &
+                         - cmplx_i*AA_bar(n, m, :)*(AA_bar(n, n, a) - AA_bar(m, m, a)) &
+                         + sum_AD(:, a) &
+                         + cmplx_i*(HH_dadb_bar(n, m, :, a) &
+                                    + sum_HD(:, a) &
+                                    + (D_h_no_eta(n, m, :)*(eig_da(n, a) - eig_da(m, a)) + &
+                                       D_h_no_eta(n, m, a)*(eig_da(n, :) - eig_da(m, :)))) &
+                         /(eig(m) - eig(n)))
+
+          ! Correction term due to finite sc_eta
+          ! See Eq. (19) of Phys. Rev. B 103, 247101 (2021)
+          if (pw90_berry%sc_use_eta_corr) then
+            do p = 1, num_wann
+              if (p == n .or. p == m) cycle
+              gen_r_nm(n,m,:) = gen_r_nm(n,m,:) &
+                            - pw90_berry%sc_eta**2/((eig(p) - eig(m))**2 &
+                                                    + pw90_berry%sc_eta**2)/(eig(n) - eig(m)) &
+                            *(AA_bar(n, p, :)*HH_da_bar(p, m, a) &
+                              - (HH_da_bar(n, p, :) + cmplx_i*(eig(n) &
+                                                               - eig(p))*AA_bar(n, p, :))*AA_bar(p, m, a)) &
+                            + pw90_berry%sc_eta**2/((eig(n) - eig(p))**2 &
+                                                    + pw90_berry%sc_eta**2)/(eig(n) - eig(m)) &
+                            *(HH_da_bar(n, p, a)*AA_bar(p, m, :) &
+                              - AA_bar(n, p, a)*(HH_da_bar(p, m, :) + cmplx_i*(eig(p) - eig(m))*AA_bar(p, m, :)))
+            enddo
+          endif
+
+        enddo ! a
+
+      enddo!m
+    enddo!n
+
+  end subroutine berry_get_pos_gen_deriv
+
   subroutine berry_get_sc_klist(pw90_berry, dis_manifold, fermi_energy_list, kmesh_info, kpt_latt, &
                                 ws_region, print_output, pw90_band_deriv_degen, wannier_data, &
                                 ws_distance, wigner_seitz, AA_R, HH_R, u_matrix, v_matrix, eigval, &
@@ -2989,7 +3175,7 @@ contains
     ws_distance, wigner_seitz, AA_R, HH_R, u_matrix, v_matrix, eigval, &
     kpt, real_lattice, floq_k_list, mp_grid, scissors_shift, num_bands, &
     num_kpts, num_wann, num_valence_bands, effective_model, &
-    have_disentangled, seedname, stdout, timer, error, comm)
+    have_disentangled, seedname, stdout, timer, error, comm)!ALVARO
 
     use w90_constants,      only: dp, cmplx_0, cmplx_i, twopi, pw90_physical_constants_type
     use w90_utility,        only: utility_diagonalize, utility_rotate, &
