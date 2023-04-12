@@ -3505,11 +3505,13 @@ contains
   u = cmplx_0!u-s units need to be eV/Angstrom on output:
 
   do iharm = 1, pw90_berry%floq_num_harmonics
+    if (iharm == ((pw90_berry%floq_num_harmonics + 1)/2)) cycle !Requeriment to avoid division by 0 when intengrating the d.c. part.
+    !NOTE: The above statement assings a value of zero to initial velocity of electrons, which is required for T-periodicity and cons. of momentum.
     do icoord = 1, 3
       u(icoord) = u(icoord) + &
       pw90_berry%floq_forc(2*icoord-1, iharm)* exp(cmplx_i*pw90_berry%floq_forc(2*icoord, iharm)) *&
       exp(cmplx_i*((real(iharm,dp) - real(pw90_berry%floq_num_harmonics + 1, dp)/2.0_dp)*omega*t))/&
-      cmplx_i*((real(iharm,dp) - real(pw90_berry%floq_num_harmonics + 1, dp)/2.0_dp)*omega)!Units = V*eV/m.
+      (cmplx_i*((real(iharm,dp) - real(pw90_berry%floq_num_harmonics + 1, dp)/2.0_dp)*omega))!Units = V*eV/m.
     enddo
   enddo
   !We must:
