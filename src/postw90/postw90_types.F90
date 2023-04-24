@@ -173,6 +173,7 @@ module w90_postw90_types
     integer       :: floq_ntstep
     integer       :: floq_frange
     integer       :: floq_num_harmonics
+    real(kind=dp) :: floq_deph_time
     real(kind=dp), allocatable :: floq_time_list(:), &
                                   floq_forc(:, :)
   end type pw90_berry_mod_type

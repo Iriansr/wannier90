@@ -1661,6 +1661,15 @@ contains
         return
       endif
 
+      pw90_berry%floq_deph_time = 1.0_dp !By default: 1s of dephasing time, virtually no dephasing.
+      call w90_readwrite_get_keyword('floq_deph_time', found, error, comm, &
+                                      r_value=pw90_berry%floq_deph_time)
+      if (allocated(error)) return
+      if (found .and. pw90_berry%floq_deph_time .LE. 0.0_dp) then
+        call set_error_input(error, 'Error: pw90_berry%floq_deph_time must be positive nonzero real number', comm)
+        return
+      endif
+
     endif
 
     ! TODO: Alternatively, read list of (complex) frequencies; kubo_nfreq is
@@ -2295,6 +2304,7 @@ contains
         write (stdout, '(1x,a46,10x,e18.3,13x,a1)') '|  Lower time for Floquet calculation        :', pw90_berry%floq_time_min, '|'
         write (stdout, '(1x,a46,10x,e18.3,13x,a1)') '|  Upper time for Floquet calculation        :', pw90_berry%floq_time_max, '|'
         write (stdout, '(1x,a46,10x,e18.3,13x,a1)') '|  Time step for Floquet calculation         :', pw90_berry%floq_time_step, '|'
+        write (stdout, '(1x,a46,10x,e18.3,13x,a1)') '|  Dephasing time for Floquet calculation    :', pw90_berry%floq_deph_time, '|'
         write (stdout, '(1x,a46,10x,i4,13x,a1)') '|  Number of harmonics in provided force         :', pw90_berry%floq_num_harmonics, '|'
         write (stdout, '(1x,a46,10x,a8,13x,a1)') '|  Provided force constants (in V/m)       : |'
         do i = 1, pw90_berry%floq_num_harmonics

@@ -3234,7 +3234,8 @@ contains
     real(kind=dp),    allocatable :: eig(:), eig_da(:, :), &
                                      occ(:), eigF(:), &
                                      gen_r_nm(:, :, :, :)
-    real(kind=dp)                 :: t, dt, omega
+    real(kind=dp)                 :: t, dt, omega, deph_time_ev, &
+                                     dephasing_factor
     complex(kind=dp)              :: aux_vec(3)
     integer                       :: i, iw, it, is, ir, &
                                      n, m, l, p
@@ -3422,6 +3423,11 @@ contains
         !We use Energy = |e|*eps = \hbar\omega = 2\pi\hbar/t -> eps^{-1} = |e|t/(2\pi\hbar).
         !To pass to eV^{-1} we have to divide by (2\pi\hbar) in eV*s-s.
         t = t/(twopi*physics%eV_seconds)!Units = eV^{-1}.
+
+        !Get the dephasing time in eV^{-1} and dephasing factor.
+        deph_time_ev = pw90_berry%floq_deph_time/(twopi*physics%eV_seconds)!Units = eV^{-1}.
+        dephasing_factor = exp(-t/deph_time_ev)
+        !TODO: Where to multiply it? Check Silva and Vampa.
 
         !calcualte the trace Eq. (????) of Ref. [???]. I have left the
         !original forall statement, with do-s should not get warnings.

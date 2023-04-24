@@ -492,6 +492,8 @@ contains
     if (allocated(error)) return
     call comms_bcast(pw90_berry%floq_frange, 1, error, comm)
     if (allocated(error)) return
+    call comms_bcast(pw90_berry%floq_deph_time, 1, error, comm)
+    if (allocated(error)) return
     call comms_bcast(pw90_berry%floq_num_harmonics, 1, error, comm)
     if (allocated(error)) return
     fermi_n = 0
