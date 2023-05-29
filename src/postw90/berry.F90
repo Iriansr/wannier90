@@ -3448,7 +3448,7 @@ contains
 
           floq_k_list(i, it, iw) = floq_k_list(i, it, iw) + &
           occF(n, m)*eig_daF(l, p, i)*QSF(p, n, ir)*conjg(QSF(l, m, is))*&
-          exp(cmplx_i*t*(eigF(n) - eigF(m) + real(ir - is, dp)*omega))!Units: eV*Angstrom.
+          exp(-cmplx_i*t*(eigF(n) - eigF(m) + real(ir - is, dp)*omega))!Units: eV*Angstrom.
 
         !end forall
         enddo
