@@ -3420,12 +3420,12 @@ contains
       do it = 1, pw90_berry%floq_ntime
 
         t = pw90_berry%floq_time_list(it)!Units = s.
-        !We use Energy = |e|*eps = \hbar\omega = 2\pi\hbar/t -> eps^{-1} = |e|t/(2\pi\hbar).
-        !To pass to eV^{-1} we have to divide by (2\pi\hbar) in eV*s-s.
-        t = t/(twopi*physics%eV_seconds)!Units = eV^{-1}.
+        !We use Energy = |e|*eps = \hbar\omega = 2\pi\hbar/T -> eps^{-1} = |e|t/(\hbar), so eps*eps'^{-1}=2\pit/T.
+        !To pass to eV^{-1} we have to divide by \hbar in eV*s-s.
+        t = t/(physics%eV_seconds)!Units = eV^{-1}.
 
         !Get the dephasing time in eV^{-1} and dephasing factor.
-        deph_time_ev = pw90_berry%floq_deph_time/(twopi*physics%eV_seconds)!Units = eV^{-1}.
+        deph_time_ev = pw90_berry%floq_deph_time/(physics%eV_seconds)!Units = eV^{-1}.
         dephasing_factor = exp(-t/deph_time_ev)
         !TODO: Where to multiply it? Check Silva and Vampa.
 
