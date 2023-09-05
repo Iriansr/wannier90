@@ -1641,9 +1641,9 @@ contains
             !as argued in PTSIA23.
 
             do jk = 1, 6
-              do kx = 1,mpgrid(1)
-                do ky = 1,mpgrid(2)
-                  do kz = 1,mpgrid(3)
+              do kx = 1, mp_grid(1)
+                do ky = 1, mp_grid(2)
+                  do kz = 1, mp_grid(3)
                     j = alpha_S(jk)
                     k = beta_S(jk)
 
@@ -1655,7 +1655,7 @@ contains
                     open (file_unit, FILE=file_name, STATUS='UNKNOWN', FORM='FORMATTED')
                     do ifreq = 1, pw90_berry%kubo_nfreq
                       write (file_unit, '(2E18.8E3)') real(pw90_berry%kubo_freq_list(ifreq), dp), &
-                        0.5_dp*fac*real(ic_list_kdec(i,j,k,ifreq,kx,ky,kz) + ic_list_kdec(i,k,j,ifreq), dp)
+                        0.5_dp*fac*real(ic_list_kdec(i,j,k,ifreq,kx,ky,kz) + ic_list_kdec(i,k,j,ifreq,kx,ky,kz), dp)
                     enddo
                     close (file_unit)
                   enddo   ! kz
@@ -1664,9 +1664,9 @@ contains
             enddo ! jk
 
             do jk = 1, 3
-              do kx = 1,mpgrid(1)
-                do ky = 1,mpgrid(2)
-                  do kz = 1,mpgrid(3)
+              do kx = 1, mp_grid(1)
+                do ky = 1, mp_grid(2)
+                  do kz = 1, mp_grid(3)
                     j = alpha_A(jk)
                     k = beta_A(jk)
 
@@ -1678,7 +1678,7 @@ contains
                     open (file_unit, FILE=file_name, STATUS='UNKNOWN', FORM='FORMATTED')
                     do ifreq = 1, pw90_berry%kubo_nfreq
                       write (file_unit, '(2E18.8E3)') real(pw90_berry%kubo_freq_list(ifreq), dp), &
-                        0.5_dp*fac*aimag(ic_list_kdec(i,j,k,ifreq,kx,ky,kz) - ic_list_kdec(i,k,j,ifreq), dp)
+                        0.5_dp*fac*aimag(ic_list_kdec(i,j,k,ifreq,kx,ky,kz) - ic_list_kdec(i,k,j,ifreq,kx,ky,kz), dp)
                     
                     enddo
                   enddo
