@@ -1678,7 +1678,7 @@ contains
                     open (file_unit, FILE=file_name, STATUS='UNKNOWN', FORM='FORMATTED')
                     do ifreq = 1, pw90_berry%kubo_nfreq
                       write (file_unit, '(2E18.8E3)') real(pw90_berry%kubo_freq_list(ifreq), dp), &
-                        0.5_dp*fac*aimag(ic_list_kdec(i,j,k,ifreq,kx,ky,kz) - ic_list_kdec(i,k,j,ifreq,kx,ky,kz), dp)
+                        0.5_dp*fac*aimag(ic_list_kdec(i,j,k,ifreq,kx,ky,kz) - ic_list_kdec(i,k,j,ifreq,kx,ky,kz))
                     
                     enddo
                   enddo
