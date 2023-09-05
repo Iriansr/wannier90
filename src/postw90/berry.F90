@@ -179,8 +179,9 @@ contains
     real(kind=dp), allocatable :: sc_k_list(:, :, :)
     real(kind=dp), allocatable :: sc_list(:, :, :)
     ! injection current
-    complex(kind=dp), allocatable :: ic_k_list(:, :, :, :)
-    complex(kind=dp), allocatable :: ic_list(:, :, :, :)
+    complex(kind=dp), allocatable :: ic_k_list(:, :, :, :)            ! ic_k_list(a,b,c,freq)
+    complex(kind=dp), allocatable :: ic_list(:, :, :, :)              ! ic_list(a,b,c,freq)
+    complex(kind=dp), allocatable :: ic_list_kdec(:, :, :, :, :, :, :)  ! ic_list_kdec(a,b,c,freq,k1,k2,k3)
     ! jerk current
     complex(kind=dp), allocatable :: jc_k_list(:, :, :)
     complex(kind=dp), allocatable :: jc_list(:, :, :)
@@ -390,8 +391,12 @@ contains
       if (allocated(error)) return
       allocate (ic_k_list(3, 3, 3, pw90_berry%kubo_nfreq))
       allocate (ic_list(3, 3, 3, pw90_berry%kubo_nfreq))
+      allocate (ic_list_kdec(3,3,3,pw90_berry%kubo_nfreq,mp_grid(1),mp_grid(2),mp_grid(3)))
+
       ic_k_list = cmplx_0
       ic_list = cmplx_0
+      ic_list_kdec = cmplx_0
+
     endif
 
     if (eval_jc) then
@@ -722,7 +727,9 @@ contains
                                   num_kpts, num_wann, num_valence_bands, effective_model, &
                                   have_disentangled, seedname, stdout, timer, error, comm)
           if (allocated(error)) return
+          
           ic_list = ic_list + ic_k_list*kweight
+        
         end if
 
         if (eval_jc) then
@@ -952,7 +959,10 @@ contains
                                   num_kpts, num_wann, num_valence_bands, effective_model, &
                                   have_disentangled, seedname, stdout, timer, error, comm)
           if (allocated(error)) return
+
           ic_list = ic_list + ic_k_list*kweight
+          ic_list_kdec(:,:,:,:,kpt(1),kpt(2),kpt(3)) = ic_list_kdec(:,:,:,:,kpt(1),kpt(2),kpt(3)) + ic_k_list*kweight
+
         end if
 
         if (eval_jc) then
@@ -1092,6 +1102,11 @@ contains
 
     if (eval_ic) then
       call comms_reduce(ic_list(1, 1, 1, 1), 3*3*3*pw90_berry%kubo_nfreq, 'SUM', error, comm)
+      
+      if .not. (pw90_berry%wanint_kpoint_file) then
+        call comms_reduce(ic_list_kdec(1, 1, 1, 1, 1, 1, 1),3*3*3*pw90_berry%kubo_nfreq*num_kpts,'SUM', error,comm)
+      end if
+
       if (allocated(error)) return
     end if
 
@@ -1619,7 +1634,61 @@ contains
           enddo
 
         enddo
+        if .not. (pw90_berry%wanint_kpoint_file) then
+          do i = 1, 3
+            !We separate into the symmetric and antisymetric parts with respect to the b <-> c exchange.
+            !The symmetric part is completely real and the antisymmetric one completely imaginary,
+            !as argued in PTSIA23.
 
+            do jk = 1, 6
+              do kx = 1,mpgrid(1)
+                do ky = 1,mpgrid(2)
+                  do kz = 1,mpgrid(3)
+                    j = alpha_S(jk)
+                    k = beta_S(jk)
+
+                    file_name = trim(seedname)//'-kdec-ic_S_'// &
+                                achar(119 + i)//achar(119 + j)//achar(119 + k)//'.dat'
+                    file_name = trim(file_name)
+                    file_unit = io_file_unit()
+                    write (stdout, '(/,3x,a)') '* '//file_name
+                    open (file_unit, FILE=file_name, STATUS='UNKNOWN', FORM='FORMATTED')
+                    do ifreq = 1, pw90_berry%kubo_nfreq
+                      write (file_unit, '(2E18.8E3)') real(pw90_berry%kubo_freq_list(ifreq), dp), &
+                        0.5_dp*fac*real(ic_list_kdec(i,j,k,ifreq,kx,ky,kz) + ic_list_kdec(i,k,j,ifreq), dp)
+                    enddo
+                    close (file_unit)
+                  enddo   ! kz
+                enddo   ! ky
+              enddo   ! kx
+            enddo ! jk
+
+            do jk = 1, 3
+              do kx = 1,mpgrid(1)
+                do ky = 1,mpgrid(2)
+                  do kz = 1,mpgrid(3)
+                    j = alpha_A(jk)
+                    k = beta_A(jk)
+
+                    file_name = trim(seedname)//'-kdec-ic_A_'// &
+                                achar(119 + i)//achar(119 + j)//achar(119 + k)//'.dat'
+                    file_name = trim(file_name)
+                    file_unit = io_file_unit()
+                    write (stdout, '(/,3x,a)') '* '//file_name
+                    open (file_unit, FILE=file_name, STATUS='UNKNOWN', FORM='FORMATTED')
+                    do ifreq = 1, pw90_berry%kubo_nfreq
+                      write (file_unit, '(2E18.8E3)') real(pw90_berry%kubo_freq_list(ifreq), dp), &
+                        0.5_dp*fac*aimag(ic_list_kdec(i,j,k,ifreq,kx,ky,kz) - ic_list_kdec(i,k,j,ifreq), dp)
+                    
+                    enddo
+                  enddo
+                enddo
+              enddo
+              close (file_unit)
+            enddo
+
+          enddo
+        endif
       endif
 
       if (eval_jc) then
