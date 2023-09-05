@@ -217,7 +217,7 @@ contains
     real(kind=dp) :: cell_volume
     real(kind=dp) :: kweight, kweight_adpt, kpt(3), db1, db2, db3, fac, rdum, vdum(3)
 
-    integer :: n, i, j, k, l, jk, il, ikpt, if, ierr, loop_x, loop_y, loop_z, kdotp_nbands
+    integer :: n, i, j, k, l, jk, il, ikpt, if, ierr, loop_x, loop_y, loop_z, kdotp_nbands,kx,ky,kz
     integer :: loop_xyz, loop_adpt, adpt_counter_list(fermi_n), ifreq, file_unit
     integer :: my_node_id, num_nodes
 
@@ -1103,7 +1103,7 @@ contains
     if (eval_ic) then
       call comms_reduce(ic_list(1, 1, 1, 1), 3*3*3*pw90_berry%kubo_nfreq, 'SUM', error, comm)
       
-      if .not. (pw90_berry%wanint_kpoint_file) then
+      if  (.not. pw90_berry%wanint_kpoint_file) then
         call comms_reduce(ic_list_kdec(1, 1, 1, 1, 1, 1, 1),3*3*3*pw90_berry%kubo_nfreq*num_kpts,'SUM', error,comm)
       end if
 
@@ -1634,7 +1634,7 @@ contains
           enddo
 
         enddo
-        if .not. (pw90_berry%wanint_kpoint_file) then
+        if (.not.  pw90_berry%wanint_kpoint_file) then
           do i = 1, 3
             !We separate into the symmetric and antisymetric parts with respect to the b <-> c exchange.
             !The symmetric part is completely real and the antisymmetric one completely imaginary,
