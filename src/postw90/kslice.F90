@@ -163,7 +163,7 @@ contains
                          spn_k(num_wann), del_eig(num_wann, 3), Delta_k, Delta_E, &
                          zhat(3), vdum(3), rdum, shc_k_fermi(fermi_n)
     logical           :: plot_fermi_lines, plot_curv, plot_morb, &
-                         fermi_lines_color, heatmap, plot_shc
+                         fermi_lines_color, heatmap, plot_shc, plot_ic
     character(len=120) :: filename, square
     character(len=120) :: file_name
     integer :: file_unit
@@ -206,6 +206,8 @@ contains
     plot_curv = index(pw90_kslice%task, 'curv') > 0
     plot_morb = index(pw90_kslice%task, 'morb') > 0
     plot_shc = index(pw90_kslice%task, 'shc') > 0
+    plot_ic = index(pw90_kslice%task, 'ic') > 0
+
     fermi_lines_color = pw90_kslice%fermi_lines_colour /= 'none'
     heatmap = plot_curv .or. plot_morb .or. plot_shc
     if (plot_fermi_lines .and. fermi_lines_color .and. heatmap) then
@@ -230,7 +232,7 @@ contains
 
     if (on_root) then
       call kslice_print_info(plot_fermi_lines, fermi_lines_color, plot_curv, plot_morb, plot_shc, &
-                             stdout, pw90_berry, fermi_energy_list, error, comm)
+                             plot_ic, stdout, pw90_berry, fermi_energy_list, error, comm)
       if (allocated(error)) return
     end if
 
@@ -240,12 +242,14 @@ contains
                   error, comm)
     if (allocated(error)) return
 
-    if (plot_curv .or. plot_morb) then
+    if (plot_curv .or. plot_morb .or. plot_ic) then
+      
       call get_AA_R(pw90_berry, dis_manifold, kmesh_info, kpt_latt, print_output, AA_R, HH_R, &
                     v_matrix, eigval, wigner_seitz%irvec, wigner_seitz%nrpts, num_bands, num_kpts, &
                     num_wann, effective_model, have_disentangled, seedname, stdout, timer, &
                     error, comm)
       if (allocated(error)) return
+
       allocate (ic_k_list(3, 3, 3, pw90_berry%kubo_nfreq))
       allocate (ic_list(3, 3, 3, pw90_berry%kubo_nfreq))
       ic_k_list = cmplx_0
@@ -432,7 +436,7 @@ contains
         end if
       end if
 
-      if (plot_curv) then
+      if (plot_ic) then
 
         call berry_get_ic_klist(pw90_berry, dis_manifold, fermi_energy_list, kpt_latt, &
                                   ws_region, print_output, pw90_band_deriv_degen, wannier_data, &
@@ -442,6 +446,23 @@ contains
                                   have_disentangled, seedname, stdout, timer, error, comm)
           if (allocated(error)) return
           ic_list = ic_list + ic_k_list
+
+      else if (plot_curv) then
+
+        call berry_get_imf_klist(dis_manifold, fermi_energy_list, kpt_latt, ws_region, print_output, &
+                                 wannier_data, ws_distance, wigner_seitz, AA_R, BB_R, CC_R, HH_R, &
+                                 u_matrix, v_matrix, eigval, kpt, real_lattice, imf_k_list, &
+                                 scissors_shift, mp_grid, num_bands, num_kpts, num_wann, &
+                                 num_valence_bands, effective_model, have_disentangled, seedname, &
+                                 stdout, timer, error, comm)
+        if (allocated(error)) return
+
+        curv(1) = sum(imf_k_list(:, 1, 1))
+        curv(2) = sum(imf_k_list(:, 2, 1))
+        curv(3) = sum(imf_k_list(:, 3, 1))
+        if (pw90_berry%curv_unit == 'bohr2') curv = curv/bohr**2
+        ! Print _minus_ the Berry curvature
+        my_zdata(:, iloc) = -curv(:)
 
       else if (plot_morb) then
         call berry_get_imfgh_klist(dis_manifold, fermi_energy_list, kpt_latt, ws_region, &
@@ -460,6 +481,7 @@ contains
         morb(2) = sum(Morb_k(:, 2))
         morb(3) = sum(Morb_k(:, 3))
         my_zdata(:, iloc) = morb(:)
+
       else if (plot_shc) then
         call berry_get_shc_klist(pw90_berry, dis_manifold, fermi_energy_list, kpt_latt, &
                                  pw90_band_deriv_degen, ws_region, pw90_spin_hall, print_output, &
@@ -529,7 +551,7 @@ contains
       if (allocated(error)) return
     end if
 
-    if (plot_curv) then
+    if (plot_ic) then
       call comms_reduce(ic_list(1, 1, 1, 1), 3*3*3*pw90_berry%kubo_nfreq, 'SUM', error, comm)
       if (allocated(error)) return
     end if
@@ -998,7 +1020,7 @@ contains
       end if
 
 
-      if (plot_curv) then
+      if (plot_ic) then
         ! -----------------------------!
         ! Injection current
         ! -----------------------------!
@@ -1024,7 +1046,7 @@ contains
         write (stdout, '(/,1x,a)') &
           '----------------------------------------------------------'
         write (stdout, '(1x,a)') &
-          'Output data files related to injection current:           '
+          'Output data files related to ksliced injection current:           '
         write (stdout, '(1x,a)') &
           '----------------------------------------------------------'
 
@@ -1037,7 +1059,7 @@ contains
             j = alpha_S(jk)
             k = beta_S(jk)
 
-            file_name = trim(seedname)//'-ic_S_'// &
+            file_name = trim(seedname)//'-kslice-ic_S_'// &
                         achar(119 + i)//achar(119 + j)//achar(119 + k)//'.dat'
             file_name = trim(file_name)
             file_unit = io_file_unit()
@@ -1054,7 +1076,7 @@ contains
             j = alpha_A(jk)
             k = beta_A(jk)
 
-            file_name = trim(seedname)//'-ic_A_'// &
+            file_name = trim(seedname)//'-kslice-ic_A_'// &
                         achar(119 + i)//achar(119 + j)//achar(119 + k)//'.dat'
             file_name = trim(file_name)
             file_unit = io_file_unit()
@@ -1082,7 +1104,7 @@ contains
   !================================================!
 
   subroutine kslice_print_info(plot_fermi_lines, fermi_lines_color, plot_curv, plot_morb, &
-                               plot_shc, stdout, pw90_berry, fermi_energy_list, error, comm)
+                               plot_shc,plot_ic, stdout, pw90_berry, fermi_energy_list, error, comm)
     !================================================!
 
     use w90_constants, only: dp, twopi, eps8
@@ -1094,7 +1116,7 @@ contains
     type(w90_error_type), allocatable, intent(out) :: error
     type(w90comm_type), intent(in) :: comm
     integer, intent(in) :: stdout
-    logical, intent(in) :: plot_fermi_lines, fermi_lines_color, plot_curv, plot_morb, plot_shc
+    logical, intent(in) :: plot_fermi_lines, fermi_lines_color, plot_curv, plot_morb, plot_shc,plot_ic
 
     integer :: fermi_n
 
@@ -1149,7 +1171,12 @@ contains
         call set_error_input(error, 'Must specify one Fermi level when kslice_task=shc', comm)
         return
       endif
+
+    elseif (plot_ic) then
+      write (stdout, '(/,3x,a)') '* Injection Current ' &
+          //'on kslice'
     endif
+    
 
   end subroutine kslice_print_info
 

@@ -363,6 +363,7 @@ contains
     if (kslicel .and. index(pw90_kslice%task, 'fermi_lines') == 0 .and. &
         index(pw90_kslice%task, 'curv') == 0 .and. &
         index(pw90_kslice%task, 'morb') == 0 .and. &
+        index(pw90_kslice%task, 'ic') == 0 .and. &
         index(pw90_kslice%task, 'shc') == 0) then
       call set_error_input(error, 'Error: value of kslice_task not recognised in w90_wannier90_readwrite_read', comm)
       return
