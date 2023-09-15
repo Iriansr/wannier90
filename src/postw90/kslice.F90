@@ -31,7 +31,7 @@ module w90_kslice
   !!
   !!    pw90_kslice_corner(1:3) is the lower left corner
   !!    pw90_kslice_b1(1:3) and pw90_kslice_b2(1:3) are the vectors subtending the slice
-
+  use w90_constants, only: dp, twopi, eps8
   use w90_error, only: w90_error_type, set_error_alloc, set_error_dealloc, set_error_fatal, &
     set_error_input, set_error_fatal, set_error_file
 
@@ -41,6 +41,31 @@ module w90_kslice
 
   public :: k_slice
 
+  ! Pseudovector <--> Antisymmetric tensor
+  !
+  ! x <--> (y,z)
+  ! y <--> (z,x)
+  ! z <--> (x,y)
+  !
+  integer, dimension(3), parameter :: alpha_A = (/2, 3, 1/)
+  integer, dimension(3), parameter :: beta_A = (/3, 1, 2/)
+
+  ! Independent components of a symmetric tensor
+  !
+  ! 1 <--> xx
+  ! 2 <--> yy
+  ! 3 <--> zz
+  ! 4 <--> xy
+  ! 5 <--> xz
+  ! 6 <--> yz
+  !
+  integer, dimension(6), parameter :: alpha_S = (/1, 2, 3, 1, 1, 2/)
+  integer, dimension(6), parameter :: beta_S = (/1, 2, 3, 2, 3, 3/)
+  integer, dimension(6), parameter, public :: berry_alpha_S = alpha_S
+  integer, dimension(6), parameter, public::  berry_beta_S = beta_S
+  integer, parameter, public:: berry_alpha_beta_S(3, 3) = &
+                               reshape((/1, 4, 5, 4, 2, 6, 5, 6, 3/), (/3, 3/))
+
 contains
 
   !================================================!
@@ -48,7 +73,7 @@ contains
   !================================================!
 
   subroutine k_slice(pw90_berry, dis_manifold, fermi_energy_list, kmesh_info, kpt_latt, &
-                     pw90_kslice, pw90_oper_read, pw90_band_deriv_degen, pw90_spin, ws_region, &
+                     pw90_kslice, physics,pw90_oper_read, pw90_band_deriv_degen, pw90_spin, ws_region, &
                      pw90_spin_hall, print_output, wannier_data, ws_distance, wigner_seitz, AA_R, &
                      BB_R, CC_R, HH_R, SH_R, SHR_R, SR_R, SS_R, SAA_R, SBB_R, v_matrix, u_matrix, &
                      bohr, eigval, real_lattice, scissors_shift, mp_grid, fermi_n, num_bands, &
@@ -60,19 +85,19 @@ contains
     !
     !================================================!
 
-    use w90_postw90_types, only: pw90_kslice_mod_type, pw90_berry_mod_type, pw90_spin_mod_type, &
-      pw90_band_deriv_degen_type, pw90_oper_read_type, pw90_spin_hall_type, wigner_seitz_type
-    use w90_berry, only: berry_get_imf_klist, berry_get_imfgh_klist, berry_get_shc_klist
-    use w90_comms, only: comms_bcast, w90comm_type, mpirank, mpisize, comms_gatherv, comms_array_split
-    use w90_constants, only: dp, twopi, eps8
-    use w90_get_oper, only: get_HH_R, get_AA_R, get_BB_R, get_CC_R, get_SS_R, get_SHC_R
-    use w90_io, only: io_file_unit, io_time
-    use w90_types, only: dis_manifold_type, kmesh_info_type, print_output_type, &
-      wannier_data_type, ws_region_type, ws_distance_type, timer_list_type
-    use w90_postw90_common, only: pw90common_fourier_R_to_k
-    use w90_spin, only: spin_get_nk
-    use w90_utility, only: utility_diagonalize, utility_recip_lattice, utility_recip_lattice_base
-    use w90_wan_ham, only: wham_get_eig_deleig
+    ! idk what we gonna use so everything lol 
+
+    use w90_postw90_types
+    use w90_constants
+    use w90_berry
+    use w90_comms
+    use w90_get_oper
+    use w90_io
+    use w90_types
+    use w90_postw90_common
+    use w90_spin
+    use w90_utility
+    use w90_wan_ham
 
     implicit none
 
@@ -95,6 +120,7 @@ contains
     type(ws_distance_type), intent(inout) :: ws_distance
     type(timer_list_type), intent(inout) :: timer
     type(w90_error_type), allocatable, intent(out) :: error
+    type(pw90_physical_constants_type), intent(in) :: physics
 
     complex(kind=dp), allocatable, intent(inout) :: AA_R(:, :, :, :)
     complex(kind=dp), allocatable, intent(inout) :: BB_R(:, :, :, :)
@@ -112,6 +138,8 @@ contains
     real(kind=dp), intent(in) :: eigval(:, :)
     real(kind=dp), intent(in) :: real_lattice(3, 3)
     real(kind=dp), intent(in) :: scissors_shift
+    real(kind=dp) :: kweight, kweight_adpt, kpt(3), db1, db2, db3, fac
+    real(kind=dp) :: cell_volume
 
     integer, intent(in) :: mp_grid(3)
     integer, intent(in) :: num_bands, num_kpts, num_wann, num_valence_bands, fermi_n
@@ -123,11 +151,13 @@ contains
 
     ! local variables
     real(kind=dp)     :: recip_lattice(3, 3), volume
-    integer           :: iloc, itot, i1, i2, n, n1, n2, n3, i, nkpts, my_nkpts
+    integer           :: iloc, itot, i1, i2, n1, n2, n3, nkpts, my_nkpts, ifreq
+    integer :: n, i, j, k, l, jk, il, ikpt, if, ierr, loop_x, loop_y, loop_z, kdotp_nbands
+
     integer           :: scriptunit, dataunit, loop_kpt
     real(kind=dp)     :: avec_2d(3, 3), bvec(3, 3), yvec(3), zvec(3), &
                          b1mod, b2mod, ymod, cosb1b2, kcorner_cart(3), &
-                         areab1b2, cosyb2, kpt(3), kpt_x, kpt_y, k1, k2, &
+                         areab1b2, cosyb2, kpt_x, kpt_y, k1, k2, &
                          imf_k_list(3, 3, fermi_n), img_k_list(3, 3, fermi_n), &
                          imh_k_list(3, 3, fermi_n), Morb_k(3, 3), curv(3), morb(3), &
                          spn_k(num_wann), del_eig(num_wann, 3), Delta_k, Delta_E, &
@@ -135,6 +165,11 @@ contains
     logical           :: plot_fermi_lines, plot_curv, plot_morb, &
                          fermi_lines_color, heatmap, plot_shc
     character(len=120) :: filename, square
+    character(len=120) :: file_name
+    integer :: file_unit
+        ! injection current
+    complex(kind=dp), allocatable :: ic_k_list(:, :, :, :)
+    complex(kind=dp), allocatable :: ic_list(:, :, :, :)
 
     complex(kind=dp), allocatable :: HH(:, :)
     complex(kind=dp), allocatable :: delHH(:, :, :)
@@ -156,6 +191,15 @@ contains
     num_nodes = mpisize(comm)
     allocate (counts(0:num_nodes - 1))
     allocate (displs(0:num_nodes - 1))
+
+
+    cell_volume = real_lattice(1, 1)*(real_lattice(2, 2)*real_lattice(3, 3) - &
+                                      real_lattice(3, 2)*real_lattice(2, 3)) + &
+                  real_lattice(1, 2)*(real_lattice(2, 3)*real_lattice(3, 1) - &
+                                      real_lattice(3, 3)*real_lattice(2, 1)) + &
+                  real_lattice(1, 3)*(real_lattice(2, 1)*real_lattice(3, 2) - &
+                                      real_lattice(3, 1)*real_lattice(2, 2))
+
     if (my_node_id == 0) on_root = .true.
 
     plot_fermi_lines = index(pw90_kslice%task, 'fermi_lines') > 0
@@ -202,7 +246,10 @@ contains
                     num_wann, effective_model, have_disentangled, seedname, stdout, timer, &
                     error, comm)
       if (allocated(error)) return
-
+      allocate (ic_k_list(3, 3, 3, pw90_berry%kubo_nfreq))
+      allocate (ic_list(3, 3, 3, pw90_berry%kubo_nfreq))
+      ic_k_list = cmplx_0
+      ic_list = cmplx_0
     endif
     if (plot_morb) then
       call get_BB_R(dis_manifold, kmesh_info, kpt_latt, print_output, BB_R, v_matrix, eigval, &
@@ -387,20 +434,15 @@ contains
 
       if (plot_curv) then
 
-        call berry_get_imf_klist(dis_manifold, fermi_energy_list, kpt_latt, ws_region, print_output, &
-                                 wannier_data, ws_distance, wigner_seitz, AA_R, BB_R, CC_R, HH_R, &
-                                 u_matrix, v_matrix, eigval, kpt, real_lattice, imf_k_list, &
-                                 scissors_shift, mp_grid, num_bands, num_kpts, num_wann, &
-                                 num_valence_bands, effective_model, have_disentangled, seedname, &
-                                 stdout, timer, error, comm)
-        if (allocated(error)) return
+        call berry_get_ic_klist(pw90_berry, dis_manifold, fermi_energy_list, kpt_latt, &
+                                  ws_region, print_output, pw90_band_deriv_degen, wannier_data, &
+                                  ws_distance, wigner_seitz, AA_R, HH_R, u_matrix, v_matrix, eigval, &
+                                  kpt, real_lattice, ic_k_list, mp_grid, scissors_shift, num_bands, &
+                                  num_kpts, num_wann, num_valence_bands, effective_model, &
+                                  have_disentangled, seedname, stdout, timer, error, comm)
+          if (allocated(error)) return
+          ic_list = ic_list + ic_k_list
 
-        curv(1) = sum(imf_k_list(:, 1, 1))
-        curv(2) = sum(imf_k_list(:, 2, 1))
-        curv(3) = sum(imf_k_list(:, 3, 1))
-        if (pw90_berry%curv_unit == 'bohr2') curv = curv/bohr**2
-        ! Print _minus_ the Berry curvature
-        my_zdata(:, iloc) = -curv(:)
       else if (plot_morb) then
         call berry_get_imfgh_klist(dis_manifold, fermi_energy_list, kpt_latt, ws_region, &
                                    print_output, wannier_data, ws_distance, wigner_seitz, AA_R, &
@@ -484,6 +526,11 @@ contains
       end if
       call comms_gatherv(my_zdata, 3*my_nkpts, &
                          zdata, 3*counts, 3*displs, error, comm)
+      if (allocated(error)) return
+    end if
+
+    if (plot_curv) then
+      call comms_reduce(ic_list(1, 1, 1, 1), 3*3*3*pw90_berry%kubo_nfreq, 'SUM', error, comm)
       if (allocated(error)) return
     end if
 
@@ -950,6 +997,80 @@ contains
         write (scriptunit, '(a)') "pl.show()"
       end if
 
+
+      if (plot_curv) then
+        ! -----------------------------!
+        ! Injection current
+        ! -----------------------------!
+
+        ! --------------------------------------------------------------------
+        ! At this point jc_list contains
+        !
+        ! (1/N) sum_k r_^{b}_{mn}r^{c}_{nm}*(\partial_{a}eps_{nm})*\delta(w_{nm}-w),
+        !
+        ! an approximation to
+        !
+        ! V_c int dk/(2.pi)^3 r_^{b}_{mn}r^{c}_{nm}*(\partial_{a}eps_{nm})*\delta(w_{nm}-w)
+        !
+        ! (V_c is the cell volume). We want
+        !
+        ! nu_{abc}=(-pi.e^3/(hbar^2)) int dk/(2.pi)^3 [r_^{b}_{mn}r^{c}_{nm}*(\partial_{a}w_{nm})*\delta(w_{nm}-w)].
+        ! --------------------------------------------------------------------
+        ! We have to:
+        ! i) Divide by V_c, so the integrand will be adimensional.
+        ! ii) Multiply by -pi.e^3/(hbar^2). This gets the result on Amperes/Volt^2 Second.
+
+        fac = (-1.0_dp)*pi*physics%elem_charge_SI**3/(physics%hbar_SI**(2)*cell_volume)
+        write (stdout, '(/,1x,a)') &
+          '----------------------------------------------------------'
+        write (stdout, '(1x,a)') &
+          'Output data files related to injection current:           '
+        write (stdout, '(1x,a)') &
+          '----------------------------------------------------------'
+
+        do i = 1, 3
+          !We separate into the symmetric and antisymetric parts with respect to the b <-> c exchange.
+          !The symmetric part is completely real and the antisymmetric one completely imaginary,
+          !as argued in PTSIA23.
+
+          do jk = 1, 6
+            j = alpha_S(jk)
+            k = beta_S(jk)
+
+            file_name = trim(seedname)//'-ic_S_'// &
+                        achar(119 + i)//achar(119 + j)//achar(119 + k)//'.dat'
+            file_name = trim(file_name)
+            file_unit = io_file_unit()
+            write (stdout, '(/,3x,a)') '* '//file_name
+            open (file_unit, FILE=file_name, STATUS='UNKNOWN', FORM='FORMATTED')
+            do ifreq = 1, pw90_berry%kubo_nfreq
+              write (file_unit, '(2E18.8E3)') real(pw90_berry%kubo_freq_list(ifreq), dp), &
+                0.5_dp*fac*real(ic_list(i, j, k, ifreq) + ic_list(i, k, j, ifreq), dp)
+            enddo
+            close (file_unit)
+          enddo
+
+          do jk = 1, 3
+            j = alpha_A(jk)
+            k = beta_A(jk)
+
+            file_name = trim(seedname)//'-ic_A_'// &
+                        achar(119 + i)//achar(119 + j)//achar(119 + k)//'.dat'
+            file_name = trim(file_name)
+            file_unit = io_file_unit()
+            write (stdout, '(/,3x,a)') '* '//file_name
+            open (file_unit, FILE=file_name, STATUS='UNKNOWN', FORM='FORMATTED')
+            do ifreq = 1, pw90_berry%kubo_nfreq
+              write (file_unit, '(2E18.8E3)') real(pw90_berry%kubo_freq_list(ifreq), dp), &
+                0.5_dp*fac*aimag(ic_list(i, j, k, ifreq) - ic_list(i, k, j, ifreq))
+            enddo
+            close (file_unit)
+          enddo
+
+        enddo
+
+      endif
+
       write (stdout, *) ' '
 
     end if ! on_root
@@ -964,7 +1085,7 @@ contains
                                plot_shc, stdout, pw90_berry, fermi_energy_list, error, comm)
     !================================================!
 
-    use w90_constants, only: dp
+    use w90_constants, only: dp, twopi, eps8
     use w90_postw90_types, only: pw90_berry_mod_type
     use w90_comms, only: w90comm_type
 
@@ -1034,7 +1155,7 @@ contains
 
   subroutine write_data_file(stdout, filename, fmt, data)
     use w90_io, only: io_file_unit
-    use w90_constants, only: dp
+    use w90_constants, only: dp, twopi, eps8
 
     integer, intent(in) :: stdout
     character(len=*), intent(in) :: filename, fmt
@@ -1059,7 +1180,7 @@ contains
     !================================================!
 
     use w90_io, only: io_file_unit
-    use w90_constants, only: dp
+    use w90_constants, only: dp, twopi, eps8
 
     integer, intent(in) :: stdout
     character(len=*), intent(in) :: filename, fmt
@@ -1107,7 +1228,7 @@ contains
   subroutine script_common(scriptunit, areab1b2, square, seedname)
     !================================================!
 
-    use w90_constants, only: dp
+    use w90_constants, only: dp, twopi, eps8
 
     integer, intent(in) :: scriptunit
     real(kind=dp), intent(in) :: areab1b2
@@ -1156,7 +1277,7 @@ contains
   subroutine script_fermi_lines(scriptunit, seedname, fermi_energy_list)
     !================================================!
 
-    use w90_constants, only: dp
+    use w90_constants, only: dp, twopi, eps8
     implicit none
     real(kind=dp), allocatable, intent(in) :: fermi_energy_list(:)
     integer, intent(in) :: scriptunit

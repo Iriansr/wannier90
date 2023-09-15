@@ -418,7 +418,7 @@ program postw90
   ! ---------------------------------------------------------------------------
 
   if (pw90_calcs%kslice) then
-    call k_slice(berry, dis_window, fermi_energy_list, kmesh_info, kpt_latt, kslice, postw90_oper, &
+    call k_slice(berry, dis_window, fermi_energy_list, kmesh_info, kpt_latt, kslice,physics, postw90_oper, &
                  pw90_ham, pw90_spin, ws_region, spin_hall, verbose, wann_data, ws_distance, &
                  ws_vec, AA_R, BB_R, CC_R, HH_R, SH_R, SHR_R, SR_R, SS_R, SAA_R, SBB_R, v_matrix, &
                  u_matrix, physics%bohr, eigval, real_lattice, scissors_shift, mp_grid, fermi_n, &
